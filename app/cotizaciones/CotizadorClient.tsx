@@ -46,6 +46,7 @@ export default function CotizadorClient({
     correo_electronico: '',
     telefono: '',
     contacto: '',
+    direccion: '',
   });
 
   const handleCrearProveedor = (e: React.FormEvent) => {
@@ -53,13 +54,21 @@ export default function CotizadorClient({
     startTransition(async () => {
       const res = await registrarProveedor(nuevoProv);
       if (res.success && res.data) {
-        // Guarda en base de datos y actualiza la lista localmente
-        setProveedores((prev) => [...prev, res.data]);
-        setProveedorSeleccionado(res.data);
-        setMostrarModal(false);
-        setNuevoProv({ nombre_proveedor: '', identificacion: '', correo_electronico: '', telefono: '', contacto: '' });
-        setMensajeEstado({ tipo: 'exito', texto: 'Proveedor guardado exitosamente en Supabase.' });
-      } else {
+      // Forzamos el cast para evitar la inferencia estricta de Supabase en el build
+      const nuevoProveedor = res.data as any;
+
+      setProveedores((prev) => [...prev, nuevoProveedor]);
+      setProveedorSeleccionado(nuevoProveedor);
+      setMostrarModal(false);
+      setNuevoProv({
+        nombre_proveedor: '',
+        identificacion: '',
+        correo_electronico: '',
+        telefono: '',
+        contacto: '',
+        direccion: '',
+      });
+    } else {
         alert(res.error || 'Error al guardar el proveedor.');
       }
     });

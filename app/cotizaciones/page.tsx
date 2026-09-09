@@ -6,8 +6,8 @@ export const revalidate = 0;
 export default async function CotizacionesPage() {
   const supabase = await createClient();
 
-  // 1. Obtener solicitudes ordenadas por fecha_creacion
-  const { data: solicitudes, error: errorSolicitudes } = await supabase
+  // 1. Obtener solicitudes
+  const { data: solicitudesRaw, error: errorSolicitudes } = await supabase
     .from('solicitudes')
     .select('*')
     .order('fecha_creacion', { ascending: false });
@@ -16,13 +16,15 @@ export default async function CotizacionesPage() {
     console.error('❌ Error Supabase en solicitudes:', errorSolicitudes.message);
   }
 
-  // 2. Obtener los artículos desde la tabla "detalles_articulo"
-  let solicitudesConItems = solicitudes || [];
+  const solicitudes = (solicitudesRaw as any[]) || [];
 
-  if (solicitudes && solicitudes.length > 0) {
+  // 2. Obtener los artículos desde la tabla "detalles_articulo"
+  let solicitudesConItems = solicitudes;
+
+  if (solicitudes.length > 0) {
     const ids = solicitudes.map((s) => s.id);
 
-    const { data: items, error: errorItems } = await supabase
+    const { data: itemsRaw, error: errorItems } = await supabase
       .from('detalles_articulo')
       .select('*')
       .in('solicitud_id', ids);
@@ -30,6 +32,8 @@ export default async function CotizacionesPage() {
     if (errorItems) {
       console.error('❌ Error Supabase en detalles_articulo:', errorItems.message);
     }
+
+    const items = (itemsRaw as any[]) || [];
 
     solicitudesConItems = solicitudes.map((sol) => ({
       ...sol,
@@ -48,7 +52,7 @@ export default async function CotizacionesPage() {
   }
 
   // 3. Obtener proveedores
-  const { data: proveedores, error: errorProveedores } = await supabase
+  const { data: proveedoresRaw, error: errorProveedores } = await supabase
     .from('proveedores')
     .select('*')
     .order('nombre_proveedor', { ascending: true });
@@ -57,10 +61,12 @@ export default async function CotizacionesPage() {
     console.error('❌ Error Supabase en proveedores:', errorProveedores.message);
   }
 
+  const proveedores = (proveedoresRaw as any[]) || [];
+
   return (
     <CotizadorClient
       solicitudesIniciales={solicitudesConItems}
-      proveedoresIniciales={proveedores || []}
+      proveedoresIniciales={proveedores}
     />
   );
 }

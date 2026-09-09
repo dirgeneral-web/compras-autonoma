@@ -44,6 +44,8 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
     return { success: false, error: 'No se encontró la solicitud seleccionada.' };
   }
 
+  const solicitudData = solicitud as any;
+
   // 2. Obtener los artículos asociados desde "detalles_articulo"
   const { data: items, error: errorItems } = await supabase
     .from('detalles_articulo')
@@ -65,6 +67,8 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
     return { success: false, error: 'No se encontró el proveedor seleccionado.' };
   }
 
+  const proveedorData = proveedor as any;
+
   // 4. Generar las filas HTML de los artículos
   const filasArticulosHTML = (items || []).map((item: any) => `
     <tr>
@@ -79,8 +83,8 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h2 style="color: #0f172a; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">Solicitud de Cotización</h2>
-      <p>Estimado(a) <strong>${proveedor.contacto || proveedor.nombre_proveedor}</strong>,</p>
-      <p>Nos comunicamos del área de compras de la Corporación Universitaria Autonoma del Cauca, para solicitar formalmente la cotización de los siguientes artículos relacionados en la solicitud <strong>#${solicitud.radicado || solicitud.id}</strong>:</p>
+      <p>Estimado(a) <strong>${proveedorData.contacto || proveedorData.nombre_proveedor}</strong>,</p>
+      <p>Nos comunicamos del área de compras de la Corporación Universitaria Autonoma de Cauca, para solicitar formalmente la cotización de los siguientes artículos relacionados en la solicitud <strong>#${solicitudData.radicado || solicitudData.id}</strong>:</p>
       
       <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
         <thead>
@@ -104,9 +108,9 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
   // 6. Enviar el correo usando el dominio propio verificado
   try {
     const response = await resend.emails.send({
-      from: 'Compras <cotizaciones@uniautonoma.edu.co>', // Dirección con dominio verificado
-      to: proveedor.correo_electronico,            // Envío directo al correo del proveedor
-      subject: `Solicitud de Cotización - Radicado #${solicitud.radicado || solicitud.id}`,
+      from: 'Compras <compras@uniautonoma.edu.co>',
+      to: proveedorData.correo_electronico,
+      subject: `Solicitud de Cotización - Radicado #${solicitudData.radicado || solicitudData.id}`,
       html: htmlContent,
     });
 
