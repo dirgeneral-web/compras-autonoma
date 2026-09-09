@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Stepper } from '@/components/ui/stepper';
 import type { Database } from '@/lib/supabase/database.types';
+import DirectorioRutasPage from './directorio/page';
 
 type ResultadoConsulta = Database['public']['Functions']['fn_consultar_radicado']['Returns'][number];
 
@@ -56,7 +57,7 @@ export default function BuscadorPublicoPage() {
   const esAprobada = resultado?.estado === 'Aprobada';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-8 px-4 py-16">
+    <main className="mx-auto flex min-h-screen max-w-4xl flex-col items-center justify-center gap-8 px-4 py-16">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
           Consulta el estado de tu solicitud
@@ -86,7 +87,7 @@ export default function BuscadorPublicoPage() {
       )}
 
       {resultado && (
-        <Card className="w-full">
+        <Card className="w-full max-w-2xl">
           <CardHeader>
             <CardTitle>{resultado.radicado}</CardTitle>
             <CardDescription>
@@ -106,6 +107,13 @@ export default function BuscadorPublicoPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Separador e integración del directorio de rutas */}
+      <hr className="my-6 w-full border-slate-200" />
+
+      <div className="w-full">
+        <DirectorioRutasPage />
+      </div>
     </main>
   );
 }
