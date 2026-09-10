@@ -15,7 +15,7 @@ export default async function CotizacionesPage() {
     console.error('❌ Error Supabase en cotizaciones_compras:', errorCotizadas.message);
   }
 
-  const idsCotizados = (cotizadasRaw || [])
+  const idsCotizados = ((cotizadasRaw as any[]) || [])
     .map((c) => c.solicitud_id)
     .filter(Boolean);
 
