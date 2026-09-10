@@ -105,7 +105,7 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
     </div>
   `;
 
-  // 6. Enviar el correo usando el dominio propio verificado
+  // 6. Enviar el correo usando Resend y actualizar la base de datos
   try {
     const response = await resend.emails.send({
       from: 'Compras <compras@uniautonoma.edu.co>',
@@ -116,6 +116,16 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
 
     if (response.error) {
       return { success: false, error: response.error.message };
+    }
+
+    // Actualizar el estado de la solicitud en la tabla 'solicitudes'
+    const { error: updateError } = await supabase
+      .from('solicitudes')
+      .update({ estado: 'enviada' })
+      .eq('id', solicitudId);
+
+    if (updateError) {
+      console.error('❌ Error al actualizar estado de la solicitud:', updateError.message);
     }
 
     return { success: true };
