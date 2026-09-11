@@ -6,7 +6,7 @@ export const revalidate = 0;
 export default async function CotizacionesPage() {
   const supabase = await createClient();
 
-  // 1. Obtener las solicitudes que ya existen en "cotizaciones_compras"
+  // 1. Obtener los IDs de solicitudes que ya existen en "cotizaciones_compras"
   const { data: cotizadasRaw, error: errorCotizadas } = await supabase
     .from('cotizaciones_compras')
     .select('solicitud_id');
@@ -19,30 +19,30 @@ export default async function CotizacionesPage() {
     .map((c) => c.solicitud_id)
     .filter(Boolean);
 
-  // 2. Obtener solicitudes excluyendo las enviadas (incluyendo registros con estado NULL)
-  let querySolicitudes = supabase
+  // 2. Obtener todas las solicitudes sin filtros complejos de PostgREST
+  const { data: solicitudesRaw, error: errorSolicitudes } = await supabase
     .from('solicitudes')
     .select('*')
-    .or('estado.is.null,estado.neq.enviada')
     .order('fecha_creacion', { ascending: false });
-
-  if (idsCotizados.length > 0) {
-    querySolicitudes = querySolicitudes.not('id', 'in', `(${idsCotizados.join(',')})`);
-  }
-
-  const { data: solicitudesRaw, error: errorSolicitudes } = await querySolicitudes;
 
   if (errorSolicitudes) {
     console.error('❌ Error Supabase en solicitudes:', errorSolicitudes.message);
   }
 
-  const solicitudes = (solicitudesRaw as any[]) || [];
+  const todasLasSolicitudes = (solicitudesRaw as any[]) || [];
 
-  // 3. Obtener los artículos desde la tabla "detalles_articulo"
-  let solicitudesConItems = solicitudes;
+  // 3. Filtrar en servidor con JS: excluye si el estado es 'enviada' o si ya está cotizada
+  const solicitudesValidas = todasLasSolicitudes.filter((sol) => {
+    const esEnviada = sol.estado === 'enviada';
+    const esCotizada = idsCotizados.includes(sol.id);
+    return !esEnviada && !esCotizada;
+  });
 
-  if (solicitudes.length > 0) {
-    const ids = solicitudes.map((s) => s.id);
+  // 4. Obtener los artículos para las solicitudes filtradas
+  let solicitudesConItems = solicitudesValidas;
+
+  if (solicitudesValidas.length > 0) {
+    const ids = solicitudesValidas.map((s) => s.id);
 
     const { data: itemsRaw, error: errorItems } = await supabase
       .from('detalles_articulo')
@@ -55,7 +55,7 @@ export default async function CotizacionesPage() {
 
     const items = (itemsRaw as any[]) || [];
 
-    solicitudesConItems = solicitudes.map((sol) => ({
+    solicitudesConItems = solicitudesValidas.map((sol) => ({
       ...sol,
       items: items
         ? items
@@ -71,7 +71,7 @@ export default async function CotizacionesPage() {
     }));
   }
 
-  // 4. Obtener proveedores
+  // 5. Obtener proveedores
   const { data: proveedoresRaw, error: errorProveedores } = await supabase
     .from('proveedores')
     .select('*')
