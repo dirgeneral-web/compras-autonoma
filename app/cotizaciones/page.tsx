@@ -31,12 +31,12 @@ export default async function CotizacionesPage() {
 
   const todasLasSolicitudes = (solicitudesRaw as any[]) || [];
 
-  // 3. Filtrar en servidor con JS: excluye si el estado es 'enviada' o si ya está cotizada
-  const solicitudesValidas = todasLasSolicitudes.filter((sol) => {
-    const esEnviada = sol.estado === 'enviada';
-    const esCotizada = idsCotizados.includes(sol.id);
-    return !esEnviada && !esCotizada;
-  });
+  // Filtrar en el servidor JS: excluye si fue enviada a cotización o si ya tiene registro cotizado
+const solicitudesValidas = todasLasSolicitudes.filter((sol) => {
+  const esEnviada = sol.enviada_a_cotizacion === true || sol.estado === 'enviada';
+  const esCotizada = idsCotizados.includes(sol.id);
+  return !esEnviada && !esCotizada;
+});
 
   // 4. Obtener los artículos para las solicitudes filtradas
   let solicitudesConItems = solicitudesValidas;

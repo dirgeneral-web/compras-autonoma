@@ -121,15 +121,17 @@ export async function enviarSolicitudCotizacion(solicitudId: string, proveedorId
     // Actualizar el estado de la solicitud en la tabla 'solicitudes'
     const { error: updateError } = await supabase
       .from('solicitudes')
-      .update({ estado: 'enviada' })
+      .update({ enviada_a_cotizacion: true })
       .eq('id', solicitudId);
 
     if (updateError) {
       console.error('❌ Error al actualizar estado de la solicitud:', updateError.message);
+      return { 
+      success: false, 
+      error: `Correo enviado, pero no se pudo actualizar la BD: ${updateError.message}` 
+      };
     }
 
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error al enviar el correo electrónico.' };
-  }
+  
 }
