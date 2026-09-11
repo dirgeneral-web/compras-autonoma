@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { registrarProveedor, enviarSolicitudCotizacion } from '@/app/actions/cotizaciones';
+import { useRouter } from 'next/navigation'; // <-- Agregar esta línea
 
 interface Item {
   id: string;
@@ -33,6 +34,7 @@ export default function CotizadorClient({
   solicitudesIniciales: Solicitud[];
   proveedoresIniciales: Proveedor[];
 }) {
+  const router = useRouter();
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<Solicitud | null>(null);
   const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales);
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<Proveedor | null>(null);
@@ -82,6 +84,12 @@ export default function CotizadorClient({
       const res = await enviarSolicitudCotizacion(solicitudSeleccionada.id, proveedorSeleccionado.id);
       if (res.success) {
         setMensajeEstado({ tipo: 'exito', texto: '¡Solicitud enviada correctamente al correo del proveedor!' });
+      // Limpiar campos seleccionados
+  setSolicitudSeleccionada('');
+  setProveedorSeleccionado('');
+
+  // Reejecuta la consulta del servidor para actualizar la lista de solicitudes
+  router.refresh();  
       } else {
         setMensajeEstado({ tipo: 'error', texto: res.error || 'Error al enviar el correo.' });
       }
