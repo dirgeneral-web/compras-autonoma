@@ -23,6 +23,7 @@ export default async function CotizacionesPage() {
   let querySolicitudes = supabase
     .from('solicitudes')
     .select('*')
+    .neq('estado', 'enviada') // Excluye las solicitudes enviadas a cotizar
     .order('fecha_creacion', { ascending: false });
 
   if (idsCotizados.length > 0) {
