@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react';
 import { registrarProveedor, enviarSolicitudCotizacion } from '@/app/actions/cotizaciones';
-import { useRouter } from 'next/navigation'; // <-- Agregar esta línea
 
 interface Item {
   id: string;
@@ -34,7 +33,6 @@ export default function CotizadorClient({
   solicitudesIniciales: Solicitud[];
   proveedoresIniciales: Proveedor[];
 }) {
-  const router = useRouter();
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<Solicitud | null>(null);
   const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales);
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<Proveedor | null>(null);
@@ -56,21 +54,20 @@ export default function CotizadorClient({
     startTransition(async () => {
       const res = await registrarProveedor(nuevoProv);
       if (res.success && res.data) {
-      // Forzamos el cast para evitar la inferencia estricta de Supabase en el build
-      const nuevoProveedor = res.data as any;
+        const nuevoProveedor = res.data as any;
 
-      setProveedores((prev) => [...prev, nuevoProveedor]);
-      setProveedorSeleccionado(nuevoProveedor);
-      setMostrarModal(false);
-      setNuevoProv({
-        nombre_proveedor: '',
-        identificacion: '',
-        correo_electronico: '',
-        telefono: '',
-        contacto: '',
-        direccion: '',
-      });
-    } else {
+        setProveedores((prev) => [...prev, nuevoProveedor]);
+        setProveedorSeleccionado(nuevoProveedor);
+        setMostrarModal(false);
+        setNuevoProv({
+          nombre_proveedor: '',
+          identificacion: '',
+          correo_electronico: '',
+          telefono: '',
+          contacto: '',
+          direccion: '',
+        });
+      } else {
         alert(res.error || 'Error al guardar el proveedor.');
       }
     });
@@ -82,14 +79,12 @@ export default function CotizadorClient({
     startTransition(async () => {
       setMensajeEstado(null);
       const res = await enviarSolicitudCotizacion(solicitudSeleccionada.id, proveedorSeleccionado.id);
+      
       if (res.success) {
-        setMensajeEstado({ tipo: 'exito', texto: '¡Solicitud enviada correctamente al correo del proveedor!' });
-      // Limpiar campos seleccionados
-  setSolicitudSeleccionada('');
-  setProveedorSeleccionado('');
-
-  // Reejecuta la consulta del servidor para actualizar la lista de solicitudes
-  router.refresh();  
+        alert('¡Solicitud enviada correctamente al correo del proveedor!');
+        
+        // Forzar recarga total de pantalla (F5)
+        window.location.reload();
       } else {
         setMensajeEstado({ tipo: 'error', texto: res.error || 'Error al enviar el correo.' });
       }
@@ -115,6 +110,7 @@ export default function CotizadorClient({
           <h2 className="font-semibold text-slate-800 text-base">1. Solicitud de Compra</h2>
           <select
             className="w-full p-2 border rounded-md text-sm bg-slate-50 border-slate-300"
+            value={solicitudSeleccionada?.id || ''}
             onChange={(e) => {
               const sol = solicitudesIniciales.find((s) => s.id === e.target.value);
               setSolicitudSeleccionada(sol || null);
