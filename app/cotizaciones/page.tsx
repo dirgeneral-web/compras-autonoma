@@ -19,11 +19,11 @@ export default async function CotizacionesPage() {
     .map((c) => c.solicitud_id)
     .filter(Boolean);
 
-  // 2. Obtener solicitudes excluyendo las ya tramitadas
+  // 2. Obtener solicitudes excluyendo las enviadas (incluyendo registros con estado NULL)
   let querySolicitudes = supabase
     .from('solicitudes')
     .select('*')
-    .neq('estado', 'enviada') // Excluye las solicitudes enviadas a cotizar
+    .or('estado.is.null,estado.neq.enviada')
     .order('fecha_creacion', { ascending: false });
 
   if (idsCotizados.length > 0) {
