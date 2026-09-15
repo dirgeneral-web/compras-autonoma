@@ -35,7 +35,7 @@ export default function CotizadorClient({
 }) {
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<Solicitud | null>(null);
   const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales);
-  const [proveedorSeleccionado, setProveedorSeleccionado] = useState<Proveedor | null>(null);
+  const [proveedoresSeleccionados, setProveedoresSeleccionados] = useState<Proveedor[]>([]);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -49,15 +49,29 @@ export default function CotizadorClient({
     direccion: '',
   });
 
+  const toggleProveedor = (prov: Proveedor) => {
+    const yaExiste = proveedoresSeleccionados.some((p) => p.id === prov.id);
+    if (yaExiste) {
+      setProveedoresSeleccionados((prev) => prev.filter((p) => p.id !== prov.id));
+    } else {
+      if (proveedoresSeleccionados.length >= 3) {
+        alert('Solo puedes seleccionar un máximo de 3 proveedores por envío.');
+        return;
+      }
+      setProveedoresSeleccionados((prev) => [...prev, prov]);
+    }
+  };
+
   const handleCrearProveedor = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(async () => {
       const res = await registrarProveedor(nuevoProv);
       if (res.success && res.data) {
         const nuevoProveedor = res.data as any;
-
         setProveedores((prev) => [...prev, nuevoProveedor]);
-        setProveedorSeleccionado(nuevoProveedor);
+        if (proveedoresSeleccionados.length < 3) {
+          setProveedoresSeleccionados((prev) => [...prev, nuevoProveedor]);
+        }
         setMostrarModal(false);
         setNuevoProv({
           nombre_proveedor: '',
@@ -74,16 +88,15 @@ export default function CotizadorClient({
   };
 
   const handleEnviarCotizacion = () => {
-    if (!solicitudSeleccionada || !proveedorSeleccionado) return;
+    if (!solicitudSeleccionada || proveedoresSeleccionados.length === 0) return;
 
     startTransition(async () => {
       setMensajeEstado(null);
-      const res = await enviarSolicitudCotizacion(solicitudSeleccionada.id, proveedorSeleccionado.id);
-      
+      const idsProveedores = proveedoresSeleccionados.map((p) => p.id);
+      const res = await enviarSolicitudCotizacion(solicitudSeleccionada.id, idsProveedores);
+
       if (res.success) {
-        alert('¡Solicitud enviada correctamente al correo del proveedor!');
-        
-        // Forzar recarga total de pantalla (F5)
+        alert(`¡Solicitud enviada con éxito a los ${proveedoresSeleccionados.length} proveedores seleccionados!`);
         window.location.reload();
       } else {
         setMensajeEstado({ tipo: 'error', texto: res.error || 'Error al enviar el correo.' });
@@ -95,7 +108,7 @@ export default function CotizadorClient({
     <div className="mx-auto max-w-5xl p-6 space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Cotizar Solicitudes</h1>
-        <p className="text-slate-500 text-sm">Selecciona una solicitud y envía la cotización directamente al proveedor.</p>
+        <p className="text-slate-500 text-sm">Selecciona una solicitud y envía la cotización hasta a 3 proveedores simultáneamente.</p>
       </div>
 
       {mensajeEstado && (
@@ -150,10 +163,13 @@ export default function CotizadorClient({
           )}
         </section>
 
-        {/* Bloque 2: Seleccionar o Crear Proveedor */}
+        {/* Bloque 2: Selección de Proveedores (Máx 3) */}
         <section className="bg-white p-5 rounded-lg border border-slate-200 space-y-4 shadow-sm">
           <div className="flex justify-between items-center">
-            <h2 className="font-semibold text-slate-800 text-base">2. Proveedor</h2>
+            <div>
+              <h2 className="font-semibold text-slate-800 text-base">2. Seleccionar Proveedores</h2>
+              <span className="text-xs text-slate-500">Seleccionados: {proveedoresSeleccionados.length}/3</span>
+            </div>
             <button
               type="button"
               onClick={() => setMostrarModal(true)}
@@ -163,29 +179,25 @@ export default function CotizadorClient({
             </button>
           </div>
 
-          <select
-            className="w-full p-2 border rounded-md text-sm bg-slate-50 border-slate-300"
-            value={proveedorSeleccionado?.id || ''}
-            onChange={(e) => {
-              const prov = proveedores.find((p) => p.id === e.target.value);
-              setProveedorSeleccionado(prov || null);
-            }}
-          >
-            <option value="">-- Seleccionar proveedor registrado --</option>
-            {proveedores.map((prov) => (
-              <option key={prov.id} value={prov.id}>
-                {prov.nombre_proveedor} - NIT: {prov.identificacion}
-              </option>
-            ))}
-          </select>
-
-          {proveedorSeleccionado && (
-            <div className="p-3 bg-slate-50 rounded-md border text-xs space-y-1 text-slate-600">
-              <p><strong className="text-slate-800">Contacto:</strong> {proveedorSeleccionado.contacto || 'No registrado'}</p>
-              <p><strong className="text-slate-800">Correo:</strong> {proveedorSeleccionado.correo_electronico}</p>
-              <p><strong className="text-slate-800">Teléfono:</strong> {proveedorSeleccionado.telefono || 'No registrado'}</p>
-            </div>
-          )}
+          <div className="max-h-56 overflow-y-auto border rounded-md divide-y text-xs">
+            {proveedores.map((prov) => {
+              const estaSeleccionado = proveedoresSeleccionados.some((p) => p.id === prov.id);
+              return (
+                <label key={prov.id} className="flex items-center gap-3 p-2.5 hover:bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={estaSeleccionado}
+                    onChange={() => toggleProveedor(prov)}
+                    className="h-4 w-4 text-blue-600 rounded border-slate-300"
+                  />
+                  <div>
+                    <p className="font-medium text-slate-800">{prov.nombre_proveedor}</p>
+                    <p className="text-slate-500">NIT: {prov.identificacion} | {prov.correo_electronico}</p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
         </section>
       </div>
 
@@ -194,10 +206,10 @@ export default function CotizadorClient({
         <h2 className="font-semibold text-slate-800 text-base">3. Enviar Solicitud</h2>
         <button
           onClick={handleEnviarCotizacion}
-          disabled={!solicitudSeleccionada || !proveedorSeleccionado || isPending}
+          disabled={!solicitudSeleccionada || proveedoresSeleccionados.length === 0 || isPending}
           className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-medium text-sm rounded-md transition"
         >
-          {isPending ? 'Enviando...' : 'Enviar Cotización por Correo'}
+          {isPending ? 'Enviando a los proveedores...' : `Enviar Cotización a ${proveedoresSeleccionados.length} Proveedor(es)`}
         </button>
       </section>
 
