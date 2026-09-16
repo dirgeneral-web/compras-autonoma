@@ -57,7 +57,7 @@ export default function LoginPage() {
 
     // 1. Mapeo de correos administrativos específicos
     const rutasPorRol: Record<string, string> = {
-      'compras@uniautonoma.edu.co': '/compras',
+      'cotizaciones@uniautonoma.edu.co': '/compras',
       'presupuesto@uniautonoma.edu.co': '/presupuesto',
       'autorizador@uniautonoma.edu.co': '/autorizador',
     };
