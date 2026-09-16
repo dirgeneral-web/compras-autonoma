@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { guardarCotizaciones, type ActionResult } from '@/app/actions/solicitudes';
 import { cotizacionesSchema, type CotizacionIndividualInput } from '@/lib/validations/compras';
@@ -192,7 +193,6 @@ export default function ComprasPage() {
 
     if (!solicitud) return;
 
-    // 1. Filtrar únicamente las cotizaciones que tienen el proveedor diligenciado
     const cotizacionesValidas = cotizaciones
       .filter((c) => Boolean(c.proveedor && c.proveedor.trim() !== ''))
       .map((c) => ({
@@ -201,7 +201,6 @@ export default function ComprasPage() {
         url_drive: c.url_drive ? c.url_drive.trim() : '',
       }));
 
-    // 2. Validación de negocio: Mínimo 2 cotizaciones obligatorias
     if (cotizacionesValidas.length < 2) {
       setMensajesError(['Es obligatorio registrar al menos 2 cotizaciones para guardar.']);
       return;
@@ -211,7 +210,6 @@ export default function ComprasPage() {
       (c) => c.proveedor === proveedorDefinitivo
     );
 
-    // 3. Mapear payload: 1 y 2 obligatorias, 3 opcional (null si no existe)
     const payload = {
       solicitud_id: solicitud.id,
       cotizacion_1: cotizacionesValidas[0],
@@ -222,14 +220,12 @@ export default function ComprasPage() {
       observaciones: observaciones.trim() || undefined,
     };
 
-    // 4. Validar payload con Zod
     const parsed = cotizacionesSchema.safeParse(payload);
     if (!parsed.success) {
       setMensajesError(parsed.error.issues.map((issue) => issue.message));
       return;
     }
 
-    // 5. Guardar mediante Server Action
     startTransition(async () => {
       const respuesta: ActionResult<{ solicitud_id: string; estado: EstadoSolicitud }> =
         await guardarCotizaciones(parsed.data);
@@ -250,11 +246,23 @@ export default function ComprasPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Compras — Cotizaciones</h1>
-        <p className="mt-1 text-slate-500">
-          Gestiona las solicitudes pendientes, revisa los artículos solicitados y registra tus cotizaciones.
-        </p>
+      {/* Encabezado con Enlace Permanente a Cotizaciones */}
+      <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Compras — Cotizaciones</h1>
+          <p className="mt-1 text-slate-500">
+            Gestiona las solicitudes pendientes, revisa los artículos solicitados y registra tus cotizaciones.
+          </p>
+        </div>
+        <Link
+          href="/cotizaciones"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          <span>Ir a Cotizaciones</span>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </Link>
       </div>
 
       <Card className="mb-8">
@@ -267,7 +275,7 @@ export default function ComprasPage() {
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="select_pendiente" className="text-xs font-semibold uppercase text-slate-500 mb-1.5 block">
+              <Label htmlFor="select_pendiente" className="mb-1.5 block text-xs font-semibold uppercase text-slate-500">
                 Solicitudes Pendientes ({pendientes.length})
               </Label>
               <select
@@ -291,7 +299,7 @@ export default function ComprasPage() {
             </div>
 
             <div>
-              <Label htmlFor="buscar_radicado" className="text-xs font-semibold uppercase text-slate-500 mb-1.5 block">
+              <Label htmlFor="buscar_radicado" className="mb-1.5 block text-xs font-semibold uppercase text-slate-500">
                 Búsqueda Directa por Radicado
               </Label>
               <form onSubmit={buscarSolicitud} className="flex gap-2">
@@ -315,7 +323,7 @@ export default function ComprasPage() {
       {solicitud && (
         <form onSubmit={handleSubmit} className="space-y-8">
           <Card className="border-slate-300 shadow-sm">
-            <CardHeader className="flex flex-row items-start justify-between bg-slate-50 border-b pb-4">
+            <CardHeader className="flex flex-row items-start justify-between border-b bg-slate-50 pb-4">
               <div>
                 <div className="flex items-center gap-2">
                   <CardTitle className="text-xl font-bold text-slate-900">{solicitud.radicado}</CardTitle>
@@ -328,37 +336,37 @@ export default function ComprasPage() {
                 </CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="pt-4 space-y-4">
+            <CardContent className="space-y-4 pt-4">
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-500">
                   Descripción General del Requerimiento
                 </h4>
-                <p className="text-sm text-slate-800 bg-slate-100/70 p-3 rounded-md border border-slate-200">
+                <p className="rounded-md border border-slate-200 bg-slate-100/70 p-3 text-sm text-slate-800">
                   {solicitud.descripcion_general || 'Sin descripción general provista.'}
                 </p>
               </div>
 
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                   Lista de Artículos / Servicios Requeridos
                 </h4>
                 {solicitud.detalles_articulo && solicitud.detalles_articulo.length > 0 ? (
                   <div className="overflow-x-auto rounded-md border border-slate-200">
                     <table className="w-full text-left text-sm text-slate-700">
-                      <thead className="bg-slate-100 text-xs font-semibold uppercase text-slate-600 border-b">
+                      <thead className="border-b bg-slate-100 text-xs font-semibold uppercase text-slate-600">
                         <tr>
-                          <th className="p-2.5 border-r">Artículo</th>
-                          <th className="p-2.5 text-center border-r">Cantidad</th>
-                          <th className="p-2.5 border-r">Unidad</th>
+                          <th className="border-r p-2.5">Artículo</th>
+                          <th className="border-r p-2.5 text-center">Cantidad</th>
+                          <th className="border-r p-2.5">Unidad</th>
                           <th className="p-2.5">Especificaciones / Descripción</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 bg-white">
                         {solicitud.detalles_articulo.map((art, idx) => (
                           <tr key={art.id || idx}>
-                            <td className="p-2.5 font-medium text-slate-900 border-r">{art.nombre_articulo}</td>
-                            <td className="p-2.5 text-center font-semibold border-r">{art.cantidad}</td>
-                            <td className="p-2.5 text-slate-500 border-r">{art.unidad_medida || '-'}</td>
+                            <td className="border-r p-2.5 font-medium text-slate-900">{art.nombre_articulo}</td>
+                            <td className="border-r p-2.5 text-center font-semibold">{art.cantidad}</td>
+                            <td className="border-r p-2.5 text-slate-500">{art.unidad_medida || '-'}</td>
                             <td className="p-2.5 text-slate-600">
                               {art.especificaciones_tecnicas || art.descripcion || '-'}
                             </td>
@@ -368,12 +376,12 @@ export default function ComprasPage() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 italic">No hay artículos registrados para esta solicitud.</p>
+                  <p className="text-xs italic text-slate-500">No hay artículos registrados para esta solicitud.</p>
                 )}
               </div>
 
               {!solicitudEditable && (
-                <div className="rounded-md bg-amber-50 p-3 text-xs text-amber-800 border border-amber-200">
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   ⚠️ Esta solicitud se encuentra en estado <strong>{solicitud.estado}</strong>. No es posible guardar cambios en esta etapa.
                 </div>
               )}
