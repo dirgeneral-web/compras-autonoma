@@ -13,7 +13,7 @@ export default function LoginPage() {
 
   const supabase = createClient();
 
-  // 🔵 Función para iniciar sesión con Google (@uniautonoma.edu.co)
+  // 🔵 Función para iniciar sesión con Google SSO (@uniautonoma.edu.co)
   const handleGoogleLogin = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -23,7 +23,7 @@ export default function LoginPage() {
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
-            hd: 'uniautonoma.edu.co', // Restringe al dominio institucional
+            hd: 'uniautonoma.edu.co',
             prompt: 'select_account',
           },
         },
@@ -36,23 +36,50 @@ export default function LoginPage() {
     }
   };
 
-  // 🔑 Función para iniciar sesión tradicional (Correo / Contraseña)
+  // 🔑 Función para iniciar sesión tradicional y redirigir según rol/dominio
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
 
+    const cleanEmail = email.toLowerCase().trim();
+
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: cleanEmail,
       password,
     });
 
     if (error) {
       setErrorMsg('Credenciales inválidas. Verifica tu correo y contraseña.');
       setLoading(false);
-    } else {
-      router.push('/solicitud/nueva');
+      return;
+    }
+
+    // 1. Mapeo de correos administrativos específicos
+    const rutasPorRol: Record<string, string> = {
+      'compras@uniautonoma.edu.co': '/compras',
+      'presupuesto@uniautonoma.edu.co': '/presupuesto',
+      'autorizador@uniautonoma.edu.co': '/autorizador',
+    };
+
+    let rutaDestino = rutasPorRol[cleanEmail];
+
+    // 2. Permitir cualquier correo institucional para nueva solicitud
+    if (
+      !rutaDestino &&
+      (cleanEmail.endsWith('@autonoma.edu.co') || cleanEmail.endsWith('@uniautonoma.edu.co'))
+    ) {
+      rutaDestino = '/solicitud/nueva';
+    }
+
+    // 3. Evaluar acceso o rechazar si es un dominio no autorizado
+    if (rutaDestino) {
+      router.push(rutaDestino);
       router.refresh();
+    } else {
+      await supabase.auth.signOut();
+      setErrorMsg('Acceso denegado. Debe ingresar con un correo institucional (@autonoma.edu.co o @uniautonoma.edu.co)');
+      setLoading(false);
     }
   };
 
@@ -95,7 +122,7 @@ export default function LoginPage() {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
             />
           </svg>
-          Ingresar con correo @uniautonoma.edu.co
+          Ingresar con correo institucional
         </button>
 
         <div className="relative mb-6">
@@ -118,7 +145,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="usuario@uniautonoma.edu.co"
+              placeholder="usuario@autonoma.edu.co"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
