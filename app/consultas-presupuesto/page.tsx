@@ -9,6 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
+// Cambia esta variable si tu columna de fecha en Supabase se llama diferente ('fecha_solicitud', 'fecha', etc.)
+const CAMPO_FECHA_BD = 'fecha_creacion';
+
 type ReportePresupuesto = {
   id: string;
   radicado: string;
@@ -30,7 +33,7 @@ export default function ConsultasPresupuestoPage() {
   const [mensajeError, setMensajeError] = useState<string | null>(null);
   const [datos, setDatos] = useState<ReportePresupuesto[]>([]);
 
-  // Catalogos para desplegables
+  // Catálogos para desplegables
   const [catRadicados, setCatRadicados] = useState<string[]>([]);
   const [catSolicitantes, setCatSolicitantes] = useState<string[]>([]);
   const [catAreas, setCatAreas] = useState<string[]>([]);
@@ -124,7 +127,7 @@ export default function ConsultasPresupuestoPage() {
         nombre_solicitante,
         area_solicitante,
         estado,
-        created_at,
+        ${CAMPO_FECHA_BD},
         clasificacion_presupuesto (
           proyecto,
           centro_costo,
@@ -147,10 +150,10 @@ export default function ConsultasPresupuestoPage() {
       if (filtroEstado === 'Autorizado') query = query.eq('estado', 'Aprobada');
       if (filtroEstado === 'Rechazado') query = query.eq('estado', 'Rechazada');
 
-      if (fechaInicio) query = query.gte('created_at', `${fechaInicio}T00:00:00`);
-      if (fechaFin) query = query.lte('created_at', `${fechaFin}T23:59:59`);
+      if (fechaInicio) query = query.gte(CAMPO_FECHA_BD, `${fechaInicio}T00:00:00`);
+      if (fechaFin) query = query.lte(CAMPO_FECHA_BD, `${fechaFin}T23:59:59`);
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query.order(CAMPO_FECHA_BD, { ascending: false });
 
       if (error) {
         console.error('Error en consulta Supabase:', error);
@@ -170,6 +173,8 @@ export default function ConsultasPresupuestoPage() {
 
         const articulos = item.detalles_articulo?.map((a: any) => a.nombre_articulo).filter(Boolean).join(', ') || clas?.producto || 'N/A';
 
+        const rawFecha = item[CAMPO_FECHA_BD] || item.fecha_registro || item.fecha_solicitud || item.fecha;
+
         return {
           id: item.id,
           radicado: item.radicado || 'Sin radicado',
@@ -182,11 +187,11 @@ export default function ConsultasPresupuestoPage() {
           estado_presupuesto: item.estado === 'Aprobada' ? 'Autorizado' : item.estado === 'Rechazada' ? 'Rechazado' : 'En Revisión',
           proveedor_seleccionado: coti?.proveedor_definitivo || 'Pendiente',
           valor_total: coti?.valor_definitivo || 0,
-          fecha_registro: item.created_at ? new Date(item.created_at).toLocaleDateString('es-CO') : 'N/A',
+          fecha_registro: rawFecha ? new Date(rawFecha).toLocaleDateString('es-CO') : 'N/A',
         };
       });
 
-      // Filtros cruzados adicionales
+      // Filtros en cliente para tablas secundarias
       let resultado = formateados;
       if (filtroProyecto) resultado = resultado.filter((f) => f.proyecto === filtroProyecto);
       if (filtroCentroCosto) resultado = resultado.filter((f) => f.centro_costo === filtroCentroCosto);
@@ -234,7 +239,7 @@ export default function ConsultasPresupuestoPage() {
     setMensajeError(null);
   }
 
-  // Métricas para tarjetas
+  // Métricas
   const totalRegistros = datos.length;
   const totalAutorizados = datos.filter((d) => d.estado_presupuesto === 'Autorizado').length;
   const totalRechazados = datos.filter((d) => d.estado_presupuesto === 'Rechazado').length;
@@ -484,7 +489,7 @@ export default function ConsultasPresupuestoPage() {
         </CardContent>
       </Card>
 
-      {/* Alerta si ocurre un error en la base de datos */}
+      {/* Alerta de error */}
       {mensajeError && (
         <div className="rounded-md bg-red-50 p-4 border border-red-200 text-red-800 text-sm font-medium">
           ⚠️ {mensajeError}
