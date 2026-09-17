@@ -1,12 +1,3 @@
-El código presentaba tres errores de sintaxis y alcance:
-
-* **Importaciones duplicadas:** Tenías dos líneas distintas importando `useState` desde `'react'`.
-* **Ámbito de variable (`datos`):** La función `descargarXLSX` estaba fuera del componente `ConsultasPresupuestoPage`, por lo que no podía acceder a la variable de estado `datos`.
-* **Etiquetas HTML anidadas e inválidas:** Tenías un elemento `<Button>` metido dentro de otro `<Button>` en el área de acciones del formulario.
-
-Código corregido y listo para usar:
-
-```tsx
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
