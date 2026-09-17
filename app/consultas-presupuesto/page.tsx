@@ -26,9 +26,20 @@ type ReportePresupuesto = {
 
 export default function ConsultasPresupuestoPage() {
   const [cargando, setCargando] = useState(false);
+  const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
   const [datos, setDatos] = useState<ReportePresupuesto[]>([]);
 
-  // 10 Filtros de Consulta
+  // Listas de opciones cargadas dinámicamente desde la BD
+  const [catRadicados, setCatRadicados] = useState<string[]>([]);
+  const [catSolicitantes, setCatSolicitantes] = useState<string[]>([]);
+  const [catAreas, setCatAreas] = useState<string[]>([]);
+  const [catProyectos, setCatProyectos] = useState<string[]>([]);
+  const [catCentrosCosto, setCatCentrosCosto] = useState<string[]>([]);
+  const [catUnidadesNegocio, setCatUnidadesNegocio] = useState<string[]>([]);
+  const [catProductos, setCatProductos] = useState<string[]>([]);
+  const [catProveedores, setCatProveedores] = useState<string[]>([]);
+
+  // Filtros seleccionados por el usuario
   const [filtroRadicado, setFiltroRadicado] = useState('');
   const [filtroSolicitante, setFiltroSolicitante] = useState('');
   const [filtroArea, setFiltroArea] = useState('');
@@ -36,11 +47,70 @@ export default function ConsultasPresupuestoPage() {
   const [filtroCentroCosto, setFiltroCentroCosto] = useState('');
   const [filtroUnidadNegocio, setFiltroUnidadNegocio] = useState('');
   const [filtroProducto, setFiltroProducto] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<string>('todos'); // 'Autorizado', 'Rechazado', 'todos'
+  const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
 
+  // Cargar las opciones para las listas desplegables desde las tablas de Supabase
+  useEffect(() => {
+    async function cargarCatalogos() {
+      setCargandoCatalogos(true);
+      const supabase = createClient();
+
+      try {
+        const [
+          resSolicitudes,
+          resCentros,
+          resUnidades,
+          resProductos,
+          resProveedores,
+          resClasificacion
+        ] = await Promise.all([
+          supabase.from('solicitudes').select('radicado, nombre_solicitante, area_solicitante'),
+          supabase.from('centros_costo').select('nombre'),
+          supabase.from('unidades_negocio').select('nombre'),
+          supabase.from('productos').select('nombre'),
+          supabase.from('proveedores').select('nombre_proveedor'),
+          supabase.from('clasificacion_presupuesto').select('proyecto')
+        ]);
+
+        if (resSolicitudes.data) {
+          setCatRadicados(Array.from(new Set(resSolicitudes.data.map((i: any) => i.radicado).filter(Boolean))));
+          setCatSolicitantes(Array.from(new Set(resSolicitudes.data.map((i: any) => i.nombre_solicitante).filter(Boolean))));
+          setCatAreas(Array.from(new Set(resSolicitudes.data.map((i: any) => i.area_solicitante).filter(Boolean))));
+        }
+
+        if (resCentros.data) {
+          setCatCentrosCosto(Array.from(new Set(resCentros.data.map((i: any) => i.nombre).filter(Boolean))));
+        }
+
+        if (resUnidades.data) {
+          setCatUnidadesNegocio(Array.from(new Set(resUnidades.data.map((i: any) => i.nombre).filter(Boolean))));
+        }
+
+        if (resProductos.data) {
+          setCatProductos(Array.from(new Set(resProductos.data.map((i: any) => i.nombre).filter(Boolean))));
+        }
+
+        if (resProveedores.data) {
+          setCatProveedores(Array.from(new Set(resProveedores.data.map((i: any) => i.nombre_proveedor).filter(Boolean))));
+        }
+
+        if (resClasificacion.data) {
+          setCatProyectos(Array.from(new Set(resClasificacion.data.map((i: any) => i.proyecto).filter(Boolean))));
+        }
+      } catch (err) {
+        console.error('Error al cargar catálogos:', err);
+      } finally {
+        setCargandoCatalogos(false);
+      }
+    }
+
+    cargarCatalogos();
+  }, []);
+
+  // Función ejecutada únicamente al presionar el botón de búsqueda o cargar inicio
   const ejecutarConsulta = useCallback(async () => {
     setCargando(true);
     const supabase = createClient();
@@ -50,35 +120,35 @@ export default function ConsultasPresupuestoPage() {
       radicado,
       nombre_solicitante,
       area_solicitante,
-      proyecto,
-      centro_costo,
-      unidad_negocio,
       estado,
-      proveedor_definitivo,
-      valor_definitivo,
       created_at,
+      clasificacion_presupuesto (
+        proyecto,
+        centro_costo,
+        unidad_negocio,
+        producto
+      ),
+      cotizaciones_compras (
+        proveedor_definitivo,
+        valor_definitivo
+      ),
       detalles_articulo (
         nombre_articulo
       )
     `);
 
-    // Aplica los filtros activos en la consulta a Supabase
-    if (filtroRadicado.trim()) query = query.ilike('radicado', `%${filtroRadicado.trim()}%`);
-    if (filtroSolicitante.trim()) query = query.ilike('nombre_solicitante', `%${filtroSolicitante.trim()}%`);
-    if (filtroArea.trim()) query = query.ilike('area_solicitante', `%${filtroArea.trim()}%`);
-    if (filtroProyecto.trim()) query = query.ilike('proyecto', `%${filtroProyecto.trim()}%`);
-    if (filtroCentroCosto.trim()) query = query.ilike('centro_costo', `%${filtroCentroCosto.trim()}%`);
-    if (filtroUnidadNegocio.trim()) query = query.ilike('unidad_negocio', `%${filtroUnidadNegocio.trim()}%`);
-    if (filtroProveedor.trim()) query = query.ilike('proveedor_definitivo', `%${filtroProveedor.trim()}%`);
-    
+    // Filtros por campos seleccionados
+    if (filtroRadicado) query = query.eq('radicado', filtroRadicado);
+    if (filtroSolicitante) query = query.eq('nombre_solicitante', filtroSolicitante);
+    if (filtroArea) query = query.eq('area_solicitante', filtroArea);
+
     if (filtroEstado === 'Autorizado') query = query.eq('estado', 'Aprobada');
     if (filtroEstado === 'Rechazado') query = query.eq('estado', 'Rechazada');
-    
+
     if (fechaInicio) query = query.gte('created_at', `${fechaInicio}T00:00:00`);
     if (fechaFin) query = query.lte('created_at', `${fechaFin}T23:59:59`);
 
     const { data, error } = await query.order('created_at', { ascending: false });
-
     setCargando(false);
 
     if (error) {
@@ -86,32 +156,41 @@ export default function ConsultasPresupuestoPage() {
       return;
     }
 
-    // Mapeo normalizado de respuestas
     const formateados: ReportePresupuesto[] = (data || []).map((item: any) => {
-      const articulos = item.detalles_articulo?.map((a: any) => a.nombre_articulo).join(', ') || 'N/A';
-      
+      const clas = Array.isArray(item.clasificacion_presupuesto)
+        ? item.clasificacion_presupuesto[0]
+        : item.clasificacion_presupuesto;
+      const coti = Array.isArray(item.cotizaciones_compras)
+        ? item.cotizaciones_compras[0]
+        : item.cotizaciones_compras;
+
+      const articulos = item.detalles_articulo?.map((a: any) => a.nombre_articulo).join(', ') || clas?.producto || 'N/A';
+
       return {
         id: item.id,
         radicado: item.radicado || 'Sin radicado',
         nombre_solicitante: item.nombre_solicitante || 'Sin nombre',
         area_solicitante: item.area_solicitante || 'N/A',
-        proyecto: item.proyecto || 'N/A',
-        centro_costo: item.centro_costo || 'N/A',
-        unidad_negocio: item.unidad_negocio || 'N/A',
+        proyecto: clas?.proyecto || 'N/A',
+        centro_costo: clas?.centro_costo || 'N/A',
+        unidad_negocio: clas?.unidad_negocio || 'N/A',
         producto_articulo: articulos,
         estado_presupuesto: item.estado === 'Aprobada' ? 'Autorizado' : item.estado === 'Rechazada' ? 'Rechazado' : 'En Revisión',
-        proveedor_seleccionado: item.proveedor_definitivo || 'Pendiente',
-        valor_total: item.valor_definitivo || 0,
+        proveedor_seleccionado: coti?.proveedor_definitivo || 'Pendiente',
+        valor_total: coti?.valor_definitivo || 0,
         fecha_registro: new Date(item.created_at).toLocaleDateString('es-CO'),
       };
     });
 
-    // Filtro secundario en memoria para productos
-    const resultadoFinal = filtroProducto.trim()
-      ? formateados.filter((f) => f.producto_articulo.toLowerCase().includes(filtroProducto.toLowerCase().trim()))
-      : formateados;
+    // Filtros combinables adicionales (relaciones cruzadas)
+    let resultado = formateados;
+    if (filtroProyecto) resultado = resultado.filter((f) => f.proyecto === filtroProyecto);
+    if (filtroCentroCosto) resultado = resultado.filter((f) => f.centro_costo === filtroCentroCosto);
+    if (filtroUnidadNegocio) resultado = resultado.filter((f) => f.unidad_negocio === filtroUnidadNegocio);
+    if (filtroProducto) resultado = resultado.filter((f) => f.producto_articulo.toLowerCase().includes(filtroProducto.toLowerCase()));
+    if (filtroProveedor) resultado = resultado.filter((f) => f.proveedor_seleccionado === filtroProveedor);
 
-    setDatos(resultadoFinal);
+    setDatos(resultado);
   }, [
     filtroRadicado,
     filtroSolicitante,
@@ -126,9 +205,10 @@ export default function ConsultasPresupuestoPage() {
     filtroProveedor,
   ]);
 
+  // Carga inicial
   useEffect(() => {
     ejecutarConsulta();
-  }, [ejecutarConsulta]);
+  }, []); // Carga todos los registros al entrar
 
   function limpiarFiltros() {
     setFiltroRadicado('');
@@ -144,7 +224,7 @@ export default function ConsultasPresupuestoPage() {
     setFiltroProveedor('');
   }
 
-  // Cálculos dinámicos del Dashboard
+  // Métricas
   const totalRegistros = datos.length;
   const totalAutorizados = datos.filter((d) => d.estado_presupuesto === 'Autorizado').length;
   const totalRechazados = datos.filter((d) => d.estado_presupuesto === 'Rechazado').length;
@@ -158,10 +238,10 @@ export default function ConsultasPresupuestoPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Dashboard — Consultas de Presupuesto
+            Dashboard — Módulo de Consultas de Presupuesto
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Filtra y analiza todos los registros, aprobaciones y rechazos procesados por el área de presupuesto.
+            Selecciona uno o varios criterios de las listas desplegables y haz clic en "Ejecutar Consulta".
           </p>
         </div>
         <Link
@@ -172,7 +252,7 @@ export default function ConsultasPresupuestoPage() {
         </Link>
       </div>
 
-      {/* Tarjetas del Dashboard */}
+      {/* Tarjetas resumen */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
@@ -213,112 +293,183 @@ export default function ConsultasPresupuestoPage() {
         </Card>
       </div>
 
-      {/* Panel de Filtros Interactivos (10 Criterios) */}
+      {/* Panel de Filtros Interactivos con Listas Desplegables */}
       <Card className="border-slate-300">
         <CardHeader className="bg-slate-50 border-b pb-4">
           <div className="flex justify-between items-center">
             <CardTitle className="text-base font-semibold text-slate-900">
-              Panel de Búsqueda y Filtros Avanzados
+              Panel de Filtros Avanzados (Selección Múltiple o Única)
             </CardTitle>
             <Button variant="outline" size="sm" onClick={limpiarFiltros}>
               Limpiar Filtros
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="pt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">1. Radicado / Solicitud</Label>
-            <Input
-              placeholder="SOL-2026-0001"
-              value={filtroRadicado}
-              onChange={(e) => setFiltroRadicado(e.target.value)}
-            />
+        <CardContent className="pt-6 space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* 1. Radicado */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">1. Radicado / Solicitud</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroRadicado}
+                onChange={(e) => setFiltroRadicado(e.target.value)}
+              >
+                <option value="">-- Todos los Radicados --</option>
+                {catRadicados.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Solicitante */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">2. Solicitante</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroSolicitante}
+                onChange={(e) => setFiltroSolicitante(e.target.value)}
+              >
+                <option value="">-- Todos los Solicitantes --</option>
+                {catSolicitantes.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. Área */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">3. Área</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroArea}
+                onChange={(e) => setFiltroArea(e.target.value)}
+              >
+                <option value="">-- Todas las Áreas --</option>
+                {catAreas.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4. Proyecto */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">4. Proyecto</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroProyecto}
+                onChange={(e) => setFiltroProyecto(e.target.value)}
+              >
+                <option value="">-- Todos los Proyectos --</option>
+                {catProyectos.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 5. Centro de Costo */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">5. Centro de Costo</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroCentroCosto}
+                onChange={(e) => setFiltroCentroCosto(e.target.value)}
+              >
+                <option value="">-- Todos los Centros de Costo --</option>
+                {catCentrosCosto.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 6. Unidad de Negocio */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">6. Unidad de Negocio</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroUnidadNegocio}
+                onChange={(e) => setFiltroUnidadNegocio(e.target.value)}
+              >
+                <option value="">-- Todas las Unidades --</option>
+                {catUnidadesNegocio.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 7. Producto */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">7. Producto / Artículo</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroProducto}
+                onChange={(e) => setFiltroProducto(e.target.value)}
+              >
+                <option value="">-- Todos los Productos --</option>
+                {catProductos.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 8 y 9. Estado */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">8 y 9. Estado Presupuestal</Label>
+              <select
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroEstado}
+                onChange={(e) => setFiltroEstado(e.target.value)}
+              >
+                <option value="todos">Todos los Estados</option>
+                <option value="Autorizado">Autorizados únicamente</option>
+                <option value="Rechazado">Rechazados únicamente</option>
+              </select>
+            </div>
+
+            {/* Fechas */}
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">Fecha Desde</Label>
+              <Input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase text-slate-600">Fecha Hasta</Label>
+              <Input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+            </div>
+
+            {/* 10. Proveedor Seleccionado */}
+            <div className="sm:col-span-2">
+              <Label className="text-xs font-semibold uppercase text-slate-600">10. Proveedor Seleccionado</Label>
+              <select
+                disabled={cargandoCatalogos}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                value={filtroProveedor}
+                onChange={(e) => setFiltroProveedor(e.target.value)}
+              >
+                <option value="">-- Todos los Proveedores --</option>
+                {catProveedores.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">2. Solicitante</Label>
-            <Input
-              placeholder="Nombre del solicitante"
-              value={filtroSolicitante}
-              onChange={(e) => setFiltroSolicitante(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">3. Área</Label>
-            <Input
-              placeholder="Ej: Tecnología, Gestión Humana"
-              value={filtroArea}
-              onChange={(e) => setFiltroArea(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">4. Proyecto</Label>
-            <Input
-              placeholder="Nombre del proyecto"
-              value={filtroProyecto}
-              onChange={(e) => setFiltroProyecto(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">5. Centro de Costo</Label>
-            <Input
-              placeholder="Ej: CC-102"
-              value={filtroCentroCosto}
-              onChange={(e) => setFiltroCentroCosto(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">6. Unidad de Negocio</Label>
-            <Input
-              placeholder="Ej: Sede Principal"
-              value={filtroUnidadNegocio}
-              onChange={(e) => setFiltroUnidadNegocio(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">7. Producto / Artículo</Label>
-            <Input
-              placeholder="Ej: Computador, Papelería"
-              value={filtroProducto}
-              onChange={(e) => setFiltroProducto(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">8 y 9. Estado Presupuestal</Label>
-            <select
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
+          {/* Botón de Ejecución de Consulta */}
+          <div className="flex justify-end pt-2 border-t">
+            <Button
+              onClick={ejecutarConsulta}
+              disabled={cargando}
+              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2"
             >
-              <option value="todos">Todos los Estados</option>
-              <option value="Autorizado">Autorizados únicamente</option>
-              <option value="Rechazado">Rechazados únicamente</option>
-            </select>
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">Fecha Desde</Label>
-            <Input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
-          </div>
-
-          <div>
-            <Label className="text-xs font-semibold uppercase text-slate-600">Fecha Hasta</Label>
-            <Input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
-          </div>
-
-          <div className="sm:col-span-2">
-            <Label className="text-xs font-semibold uppercase text-slate-600">10. Proveedor Seleccionado</Label>
-            <Input
-              placeholder="Nombre del proveedor"
-              value={filtroProveedor}
-              onChange={(e) => setFiltroProveedor(e.target.value)}
-            />
+              {cargando ? 'Buscando...' : '🔍 Ejecutar Consulta'}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -345,13 +496,13 @@ export default function ConsultasPresupuestoPage() {
                 {cargando ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-slate-500">
-                      Cargando información del presupuesto...
+                      Cargando información filtrada...
                     </td>
                   </tr>
                 ) : datos.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-slate-500">
-                      No se encontraron registros que coincidan con los filtros aplicados.
+                      No se encontraron registros que coincidan con la combinación de filtros seleccionados.
                     </td>
                   </tr>
                 ) : (
