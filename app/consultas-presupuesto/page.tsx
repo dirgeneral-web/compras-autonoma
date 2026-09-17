@@ -18,7 +18,7 @@ type ReportePresupuesto = {
   centro_costo: string;
   unidad_negocio: string;
   producto_articulo: string;
-  estado_presupuesto: 'Autorizado' | 'Rechazado' | 'En Revisión' | 'Pendiente';
+  estado_presupuesto: 'Autorizado' | 'Rechazado' | 'En Revisión';
   proveedor_seleccionado: string;
   valor_total: number;
   fecha_registro: string;
@@ -27,9 +27,10 @@ type ReportePresupuesto = {
 export default function ConsultasPresupuestoPage() {
   const [cargando, setCargando] = useState(false);
   const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
+  const [mensajeError, setMensajeError] = useState<string | null>(null);
   const [datos, setDatos] = useState<ReportePresupuesto[]>([]);
 
-  // Listas de opciones cargadas dinámicamente desde la BD
+  // Catalogos para desplegables
   const [catRadicados, setCatRadicados] = useState<string[]>([]);
   const [catSolicitantes, setCatSolicitantes] = useState<string[]>([]);
   const [catAreas, setCatAreas] = useState<string[]>([]);
@@ -39,7 +40,7 @@ export default function ConsultasPresupuestoPage() {
   const [catProductos, setCatProductos] = useState<string[]>([]);
   const [catProveedores, setCatProveedores] = useState<string[]>([]);
 
-  // Filtros seleccionados por el usuario
+  // Filtros del usuario
   const [filtroRadicado, setFiltroRadicado] = useState('');
   const [filtroSolicitante, setFiltroSolicitante] = useState('');
   const [filtroArea, setFiltroArea] = useState('');
@@ -51,10 +52,8 @@ export default function ConsultasPresupuestoPage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
-    // 1. Agregar el estado cerca de los demás useState
-    const [mensajeError, setMensajeError] = useState<string | null>(null);
 
-  // Cargar las opciones para las listas desplegables desde las tablas de Supabase
+  // Cargar catálogos iniciales
   useEffect(() => {
     async function cargarCatalogos() {
       setCargandoCatalogos(true);
@@ -102,8 +101,8 @@ export default function ConsultasPresupuestoPage() {
         if (resClasificacion.data) {
           setCatProyectos(Array.from(new Set(resClasificacion.data.map((i: any) => i.proyecto).filter(Boolean))));
         }
-      } catch (err) {
-        console.error('Error al cargar catálogos:', err);
+      } catch (err: any) {
+        console.error('Error al cargar opciones:', err);
       } finally {
         setCargandoCatalogos(false);
       }
@@ -112,95 +111,96 @@ export default function ConsultasPresupuestoPage() {
     cargarCatalogos();
   }, []);
 
-  // Función ejecutada únicamente al presionar el botón de búsqueda o cargar inicio
+  // Función principal de consulta
   const ejecutarConsulta = useCallback(async () => {
     setCargando(true);
+    setMensajeError(null);
     const supabase = createClient();
-    // 2. Actualizar dentro de la función ejecutarConsulta
-    const ejecutarConsulta = useCallback(async () => {
-    setCargando(true);
-    setMensajeError(null); // Limpiar errores previos
-        
-    let query = supabase.from('solicitudes').select(`
-      id,
-      radicado,
-      nombre_solicitante,
-      area_solicitante,
-      estado,
-      created_at,
-      clasificacion_presupuesto (
-        proyecto,
-        centro_costo,
-        unidad_negocio,
-        producto
-      ),
-      cotizaciones_compras (
-        proveedor_definitivo,
-        valor_definitivo
-      ),
-      detalles_articulo (
-        nombre_articulo
-      )
-    `);
-        const { data, error } = await query.order('created_at', { ascending: false });
+
+    try {
+      let query = supabase.from('solicitudes').select(`
+        id,
+        radicado,
+        nombre_solicitante,
+        area_solicitante,
+        estado,
+        created_at,
+        clasificacion_presupuesto (
+          proyecto,
+          centro_costo,
+          unidad_negocio,
+          producto
+        ),
+        cotizaciones_compras (
+          proveedor_definitivo,
+          valor_definitivo
+        ),
+        detalles_articulo (
+          nombre_articulo
+        )
+      `);
+
+      if (filtroRadicado) query = query.eq('radicado', filtroRadicado);
+      if (filtroSolicitante) query = query.eq('nombre_solicitante', filtroSolicitante);
+      if (filtroArea) query = query.eq('area_solicitante', filtroArea);
+
+      if (filtroEstado === 'Autorizado') query = query.eq('estado', 'Aprobada');
+      if (filtroEstado === 'Rechazado') query = query.eq('estado', 'Rechazada');
+
+      if (fechaInicio) query = query.gte('created_at', `${fechaInicio}T00:00:00`);
+      if (fechaFin) query = query.lte('created_at', `${fechaFin}T23:59:59`);
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error en consulta Supabase:', error);
+        setMensajeError(`Error de Supabase: ${error.message} (${error.code || 'BD'})`);
+        setDatos([]);
         setCargando(false);
+        return;
+      }
 
-    // Filtros por campos seleccionados
-    if (filtroRadicado) query = query.eq('radicado', filtroRadicado);
-    if (filtroSolicitante) query = query.eq('nombre_solicitante', filtroSolicitante);
-    if (filtroArea) query = query.eq('area_solicitante', filtroArea);
+      const formateados: ReportePresupuesto[] = (data || []).map((item: any) => {
+        const clas = Array.isArray(item.clasificacion_presupuesto)
+          ? item.clasificacion_presupuesto[0]
+          : item.clasificacion_presupuesto;
+        const coti = Array.isArray(item.cotizaciones_compras)
+          ? item.cotizaciones_compras[0]
+          : item.cotizaciones_compras;
 
-    if (filtroEstado === 'Autorizado') query = query.eq('estado', 'Aprobada');
-    if (filtroEstado === 'Rechazado') query = query.eq('estado', 'Rechazada');
+        const articulos = item.detalles_articulo?.map((a: any) => a.nombre_articulo).filter(Boolean).join(', ') || clas?.producto || 'N/A';
 
-    if (fechaInicio) query = query.gte('created_at', `${fechaInicio}T00:00:00`);
-    if (fechaFin) query = query.lte('created_at', `${fechaFin}T23:59:59`);
+        return {
+          id: item.id,
+          radicado: item.radicado || 'Sin radicado',
+          nombre_solicitante: item.nombre_solicitante || 'Sin nombre',
+          area_solicitante: item.area_solicitante || 'N/A',
+          proyecto: clas?.proyecto || 'N/A',
+          centro_costo: clas?.centro_costo || 'N/A',
+          unidad_negocio: clas?.unidad_negocio || 'N/A',
+          producto_articulo: articulos,
+          estado_presupuesto: item.estado === 'Aprobada' ? 'Autorizado' : item.estado === 'Rechazada' ? 'Rechazado' : 'En Revisión',
+          proveedor_seleccionado: coti?.proveedor_definitivo || 'Pendiente',
+          valor_total: coti?.valor_definitivo || 0,
+          fecha_registro: item.created_at ? new Date(item.created_at).toLocaleDateString('es-CO') : 'N/A',
+        };
+      });
 
-    const { data, error } = await query.order('created_at', { ascending: false });
-    setCargando(false);
+      // Filtros cruzados adicionales
+      let resultado = formateados;
+      if (filtroProyecto) resultado = resultado.filter((f) => f.proyecto === filtroProyecto);
+      if (filtroCentroCosto) resultado = resultado.filter((f) => f.centro_costo === filtroCentroCosto);
+      if (filtroUnidadNegocio) resultado = resultado.filter((f) => f.unidad_negocio === filtroUnidadNegocio);
+      if (filtroProducto) resultado = resultado.filter((f) => f.producto_articulo.toLowerCase().includes(filtroProducto.toLowerCase()));
+      if (filtroProveedor) resultado = resultado.filter((f) => f.proveedor_seleccionado === filtroProveedor);
 
-    if (error) {
-    console.error('Error Supabase:', error);
-    setMensajeError(`Error de Supabase: ${error.message}`);
-    setDatos([]);
-    return;
+      setDatos(resultado);
+    } catch (err: any) {
+      console.error('Error inesperado:', err);
+      setMensajeError(`Error inesperado: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setCargando(false);
     }
-
-    const formateados: ReportePresupuesto[] = (data || []).map((item: any) => {
-      const clas = Array.isArray(item.clasificacion_presupuesto)
-        ? item.clasificacion_presupuesto[0]
-        : item.clasificacion_presupuesto;
-      const coti = Array.isArray(item.cotizaciones_compras)
-        ? item.cotizaciones_compras[0]
-        : item.cotizaciones_compras;
-
-      const articulos = item.detalles_articulo?.map((a: any) => a.nombre_articulo).join(', ') || clas?.producto || 'N/A';
-
-      return {
-        id: item.id,
-        radicado: item.radicado || 'Sin radicado',
-        nombre_solicitante: item.nombre_solicitante || 'Sin nombre',
-        area_solicitante: item.area_solicitante || 'N/A',
-        proyecto: clas?.proyecto || 'N/A',
-        centro_costo: clas?.centro_costo || 'N/A',
-        unidad_negocio: clas?.unidad_negocio || 'N/A',
-        producto_articulo: articulos,
-        estado_presupuesto: item.estado === 'Aprobada' ? 'Autorizado' : item.estado === 'Rechazada' ? 'Rechazado' : 'En Revisión',
-        proveedor_seleccionado: coti?.proveedor_definitivo || 'Pendiente',
-        valor_total: coti?.valor_definitivo || 0,
-        fecha_registro: new Date(item.created_at).toLocaleDateString('es-CO'),
-      };
-    });
-
-    // Filtros combinables adicionales (relaciones cruzadas)
-    let resultado = formateados;
-    if (filtroProyecto) resultado = resultado.filter((f) => f.proyecto === filtroProyecto);
-    if (filtroCentroCosto) resultado = resultado.filter((f) => f.centro_costo === filtroCentroCosto);
-    if (filtroUnidadNegocio) resultado = resultado.filter((f) => f.unidad_negocio === filtroUnidadNegocio);
-    if (filtroProducto) resultado = resultado.filter((f) => f.producto_articulo.toLowerCase().includes(filtroProducto.toLowerCase()));
-    if (filtroProveedor) resultado = resultado.filter((f) => f.proveedor_seleccionado === filtroProveedor);
-
-    setDatos(resultado);
   }, [
     filtroRadicado,
     filtroSolicitante,
@@ -215,10 +215,9 @@ export default function ConsultasPresupuestoPage() {
     filtroProveedor,
   ]);
 
-  // Carga inicial
   useEffect(() => {
     ejecutarConsulta();
-  }, []); // Carga todos los registros al entrar
+  }, []);
 
   function limpiarFiltros() {
     setFiltroRadicado('');
@@ -232,9 +231,10 @@ export default function ConsultasPresupuestoPage() {
     setFechaInicio('');
     setFechaFin('');
     setFiltroProveedor('');
+    setMensajeError(null);
   }
 
-  // Métricas
+  // Métricas para tarjetas
   const totalRegistros = datos.length;
   const totalAutorizados = datos.filter((d) => d.estado_presupuesto === 'Autorizado').length;
   const totalRechazados = datos.filter((d) => d.estado_presupuesto === 'Rechazado').length;
@@ -251,7 +251,7 @@ export default function ConsultasPresupuestoPage() {
             Dashboard — Módulo de Consultas de Presupuesto
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Selecciona uno o varios criterios de las listas desplegables y haz clic en "Ejecutar Consulta".
+            Filtra por cualquier combinación de campos para consultar solicitudes y presupuestos.
           </p>
         </div>
         <Link
@@ -262,7 +262,7 @@ export default function ConsultasPresupuestoPage() {
         </Link>
       </div>
 
-      {/* Tarjetas resumen */}
+      {/* Tarjetas KPI */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
@@ -303,12 +303,12 @@ export default function ConsultasPresupuestoPage() {
         </Card>
       </div>
 
-      {/* Panel de Filtros Interactivos con Listas Desplegables */}
+      {/* Panel de Filtros */}
       <Card className="border-slate-300">
         <CardHeader className="bg-slate-50 border-b pb-4">
           <div className="flex justify-between items-center">
             <CardTitle className="text-base font-semibold text-slate-900">
-              Panel de Filtros Avanzados (Selección Múltiple o Única)
+              Panel de Filtros Avanzados
             </CardTitle>
             <Button variant="outline" size="sm" onClick={limpiarFiltros}>
               Limpiar Filtros
@@ -319,7 +319,7 @@ export default function ConsultasPresupuestoPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {/* 1. Radicado */}
             <div>
-              <Label className="text-xs font-semibold uppercase text-slate-600">1. Radicado / Solicitud</Label>
+              <Label className="text-xs font-semibold uppercase text-slate-600">1. Radicado</Label>
               <select
                 disabled={cargandoCatalogos}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-950"
@@ -429,7 +429,7 @@ export default function ConsultasPresupuestoPage() {
               </select>
             </div>
 
-            {/* 8 y 9. Estado */}
+            {/* Estado */}
             <div>
               <Label className="text-xs font-semibold uppercase text-slate-600">8 y 9. Estado Presupuestal</Label>
               <select
@@ -471,7 +471,7 @@ export default function ConsultasPresupuestoPage() {
             </div>
           </div>
 
-          {/* Botón de Ejecución de Consulta */}
+          {/* Botón de Ejecución */}
           <div className="flex justify-end pt-2 border-t">
             <Button
               onClick={ejecutarConsulta}
@@ -483,6 +483,13 @@ export default function ConsultasPresupuestoPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Alerta si ocurre un error en la base de datos */}
+      {mensajeError && (
+        <div className="rounded-md bg-red-50 p-4 border border-red-200 text-red-800 text-sm font-medium">
+          ⚠️ {mensajeError}
+        </div>
+      )}
 
       {/* Tabla de Resultados */}
       <Card className="border-slate-300">
@@ -512,7 +519,7 @@ export default function ConsultasPresupuestoPage() {
                 ) : datos.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-slate-500">
-                      No se encontraron registros que coincidan con la combinación de filtros seleccionados.
+                      No se encontraron registros que coincidan con los filtros seleccionados.
                     </td>
                   </tr>
                 ) : (
