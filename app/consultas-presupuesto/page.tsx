@@ -1,8 +1,16 @@
+El código presentaba tres errores de sintaxis y alcance:
+
+* **Importaciones duplicadas:** Tenías dos líneas distintas importando `useState` desde `'react'`.
+* **Ámbito de variable (`datos`):** La función `descargarXLSX` estaba fuera del componente `ConsultasPresupuestoPage`, por lo que no podía acceder a la variable de estado `datos`.
+* **Etiquetas HTML anidadas e inválidas:** Tenías un elemento `<Button>` metido dentro de otro `<Button>` en el área de acciones del formulario.
+
+Código corregido y listo para usar:
+
+```tsx
 'use client';
 
-import React, { useState } from 'react';
-import * as XLSX from 'xlsx'; // <--- Importación requerida
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -10,37 +18,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-
-const descargarXLSX = () => {
-  // 1. Validar que existan datos cargados
-  if (!datos || datos.length === 0) return;
-
-  // 2. Mapear las claves de los objetos a nombres de columna presentables
-  const datosExcel = datos.map((item) => ({
-    'Radicado': item.radicado,
-    'Solicitante': item.nombre_solicitante,
-    'Área': item.area_solicitante,
-    'Proyecto': item.proyecto,
-    'Centro de Costo': item.centro_costo,
-    'Unidad de Negocio': item.unidad_negocio,
-    'Producto / Artículo': item.producto_articulo,
-    'Proveedor': item.proveedor_seleccionado,
-    'Estado': item.estado_presupuesto,
-    'Valor Total': item.valor_total,
-    'Fecha de Registro': item.fecha_registro,
-  }));
-
-  // 3. Convertir el arreglo de objetos a una hoja de trabajo (worksheet)
-  const hoja = XLSX.utils.json_to_sheet(datosExcel);
-
-  // 4. Crear un libro de trabajo (workbook) y adjuntar la hoja
-  const libro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(libro, hoja, 'Consultas');
-
-  // 5. Generar el nombre con la fecha actual y disparar la descarga en el navegador
-  const fechaHoy = new Date().toISOString().split('T')[0];
-  XLSX.writeFile(libro, `reporte_consultas_${fechaHoy}.xlsx`);
-};
 
 // Cambia esta variable si tu columna de fecha en Supabase se llama diferente ('fecha_solicitud', 'fecha', etc.)
 const CAMPO_FECHA_BD = 'fecha_creacion';
@@ -88,6 +65,32 @@ export default function ConsultasPresupuestoPage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
+
+  // Función para exportar a Excel
+  const descargarXLSX = () => {
+    if (!datos || datos.length === 0) return;
+
+    const datosExcel = datos.map((item) => ({
+      'Radicado': item.radicado,
+      'Solicitante': item.nombre_solicitante,
+      'Área': item.area_solicitante,
+      'Proyecto': item.proyecto,
+      'Centro de Costo': item.centro_costo,
+      'Unidad de Negocio': item.unidad_negocio,
+      'Producto / Artículo': item.producto_articulo,
+      'Proveedor': item.proveedor_seleccionado,
+      'Estado': item.estado_presupuesto,
+      'Valor Total': item.valor_total,
+      'Fecha de Registro': item.fecha_registro,
+    }));
+
+    const hoja = XLSX.utils.json_to_sheet(datosExcel);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Consultas');
+
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(libro, `reporte_consultas_${fechaHoy}.xlsx`);
+  };
 
   // Cargar catálogos iniciales
   useEffect(() => {
@@ -509,22 +512,24 @@ export default function ConsultasPresupuestoPage() {
             </div>
           </div>
 
-          {/* Botón de Ejecución */}
-          <div className="flex justify-end pt-2 border-t">
+          {/* Botones de Acción */}
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
             <Button
+              type="button"
+              onClick={descargarXLSX}
+              disabled={datos.length === 0 || cargando}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+            >
+              📊 Descargar Excel (.xlsx)
+            </Button>
+
+            <Button
+              type="button"
               onClick={ejecutarConsulta}
               disabled={cargando}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2"
             >
               {cargando ? 'Buscando...' : '🔍 Ejecutar Consulta'}
-              <Button
-                type="button"
-                onClick={descargarXLSX}
-                disabled={datos.length === 0 || cargando}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                >
-                📊 Descargar Excel (.xlsx)
-            </Button>
             </Button>
           </div>
         </CardContent>
@@ -611,3 +616,5 @@ export default function ConsultasPresupuestoPage() {
     </main>
   );
 }
+
+```
