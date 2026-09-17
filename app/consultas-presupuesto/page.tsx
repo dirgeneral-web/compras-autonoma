@@ -51,6 +51,8 @@ export default function ConsultasPresupuestoPage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
+    // 1. Agregar el estado cerca de los demás useState
+    const [mensajeError, setMensajeError] = useState<string | null>(null);
 
   // Cargar las opciones para las listas desplegables desde las tablas de Supabase
   useEffect(() => {
@@ -114,7 +116,11 @@ export default function ConsultasPresupuestoPage() {
   const ejecutarConsulta = useCallback(async () => {
     setCargando(true);
     const supabase = createClient();
-
+    // 2. Actualizar dentro de la función ejecutarConsulta
+    const ejecutarConsulta = useCallback(async () => {
+    setCargando(true);
+    setMensajeError(null); // Limpiar errores previos
+        
     let query = supabase.from('solicitudes').select(`
       id,
       radicado,
@@ -136,6 +142,8 @@ export default function ConsultasPresupuestoPage() {
         nombre_articulo
       )
     `);
+        const { data, error } = await query.order('created_at', { ascending: false });
+        setCargando(false);
 
     // Filtros por campos seleccionados
     if (filtroRadicado) query = query.eq('radicado', filtroRadicado);
@@ -152,8 +160,10 @@ export default function ConsultasPresupuestoPage() {
     setCargando(false);
 
     if (error) {
-      console.error('Error al consultar datos de presupuesto:', error);
-      return;
+    console.error('Error Supabase:', error);
+    setMensajeError(`Error de Supabase: ${error.message}`);
+    setDatos([]);
+    return;
     }
 
     const formateados: ReportePresupuesto[] = (data || []).map((item: any) => {
