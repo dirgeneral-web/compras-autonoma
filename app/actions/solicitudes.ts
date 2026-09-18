@@ -27,7 +27,7 @@ export async function obtenerSolicitudesPresupuesto() {
   const { data, error } = await supabase
     .from('solicitudes')
     .select('*')
-    .eq('estado', 'En Revisión Presupuestal') // 👈 Solo trae las pendientes por Presupuesto
+    .eq('estado', 'En Revisión Presupuestal')
     .order('fecha_creacion', { ascending: false });
 
   if (error) {
@@ -37,7 +37,6 @@ export async function obtenerSolicitudesPresupuesto() {
 
   return data;
 }
-
 
 export type ActionResult<T> =
   | { success: true; data: T }
@@ -103,7 +102,6 @@ export async function crearSolicitud(
 
   const supabase = await createClient();
 
-  // Se obtiene el usuario si existe sesión, pero no se bloquea si el formulario es público
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -154,9 +152,7 @@ export async function crearSolicitud(
     return { success: false, error: 'La solicitud se creó pero no se generó el radicado.' };
   }
 
-  // Notificaciones vía Resend protegidas contra fallos
   try {
-    // 1. Notificar al Solicitante
     await notificarCambioEstado({
       correoSolicitante: encabezado.correo_solicitante,
       nombreSolicitante: encabezado.nombre_solicitante,
@@ -164,7 +160,6 @@ export async function crearSolicitud(
       estado: 'Creada',
     });
 
-    // 2. Notificar al área de Compras
     if (process.env.CORREO_COMPRAS) {
       await notificarCambioEstado({
         correoSolicitante: process.env.CORREO_COMPRAS,
@@ -209,6 +204,7 @@ export async function guardarCotizaciones(
     cotizacion_3,
     proveedor_definitivo,
     valor_definitivo,
+    cuadro_comparativo,
     observaciones,
   } = parsed.data;
 
@@ -226,6 +222,7 @@ export async function guardarCotizaciones(
       url_drive_3: cotizacion_3?.url_drive ?? null,
       proveedor_definitivo: proveedor_definitivo ?? null,
       valor_definitivo: valor_definitivo ?? null,
+      cuadro_comparativo: cuadro_comparativo ?? null,
       observaciones: observaciones ?? null,
       registrado_por: user.id,
     },
@@ -261,15 +258,12 @@ export async function guardarCotizaciones(
     correo_solicitante: string;
   };
 
- // 🔴 CAMBIO: Revalidación completa del layout y rutas
   revalidatePath('/', 'layout');
   revalidatePath('/solicitudes');
   revalidatePath(`/solicitudes/${solicitud_id}`);
 
-
   if (solicitud.radicado) {
     try {
-      // 1. Notificar al Solicitante
       await notificarCambioEstado({
         correoSolicitante: solicitud.correo_solicitante,
         nombreSolicitante: solicitud.nombre_solicitante,
@@ -277,7 +271,6 @@ export async function guardarCotizaciones(
         estado: solicitud.estado,
       });
 
-      // 2. Notificar al equipo de Presupuesto si avanzó de etapa
       if (nuevoEstado === 'En Revisión Presupuestal' && process.env.CORREO_PRESUPUESTO) {
         await notificarCambioEstado({
           correoSolicitante: process.env.CORREO_PRESUPUESTO,
@@ -361,7 +354,6 @@ export async function guardarPresupuesto(
 
   if (solicitud.radicado) {
     try {
-      // 1. Notificar al Solicitante
       await notificarCambioEstado({
         correoSolicitante: solicitud.correo_solicitante,
         nombreSolicitante: solicitud.nombre_solicitante,
@@ -369,7 +361,6 @@ export async function guardarPresupuesto(
         estado: solicitud.estado,
       });
 
-      // 2. Notificar al Autorizador / Director
       if (process.env.CORREO_AUTORIZADOR) {
         await notificarCambioEstado({
           correoSolicitante: process.env.CORREO_AUTORIZADOR,
@@ -441,7 +432,6 @@ export async function aprobarORechazarSolicitud(
 
   if (solicitud.radicado) {
     try {
-      // Notificar decisión final al solicitante
       await notificarCambioEstado({
         correoSolicitante: solicitud.correo_solicitante,
         nombreSolicitante: solicitud.nombre_solicitante,
@@ -457,14 +447,12 @@ export async function aprobarORechazarSolicitud(
   return { success: true, data: { id: solicitud.id, estado: solicitud.estado } };
 }
 
-// Inicializamos el cliente de correo con la API Key configurada en .env.local
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function rechazarSolicitudPresupuesto(solicitudId: string, motivo: string) {
   try {
     const supabase = await createClient();
 
-    // 1. Consultar la información del solicitante en la base de datos
     const { data: solicitud, error: fetchError } = await (supabase as any)
       .from('solicitudes')
       .select('id, radicado, correo_solicitante, nombre_solicitante, descripcion_general')
@@ -476,7 +464,6 @@ export async function rechazarSolicitudPresupuesto(solicitudId: string, motivo: 
       return { success: false, error: 'No se encontró la solicitud a rechazar.' };
     }
 
-    // 2. Actualizar el estado de la solicitud a 'Rechazada'
     const { error: updateError } = await (supabase as any)
       .from('solicitudes')
       .update({
@@ -490,10 +477,9 @@ export async function rechazarSolicitudPresupuesto(solicitudId: string, motivo: 
       return { success: false, error: 'No se pudo actualizar el estado de la solicitud en la base de datos.' };
     }
 
-    // 3. Despachar el correo electrónico de notificación
     if (solicitud.correo_solicitante) {
       const emailResult = await resend.emails.send({
-        from: 'Presupuesto Institucional <onboarding@resend.dev>', // Dirección o remitente verificado
+        from: 'Presupuesto Institucional <onboarding@resend.dev>',
         to: [solicitud.correo_solicitante],
         subject: `Notificación de rechazo de solicitud: ${solicitud.radicado || solicitud.id}`,
         html: `
@@ -538,7 +524,6 @@ export async function rechazarSolicitudPresupuesto(solicitudId: string, motivo: 
   }
 }
 
-// Obtener los artículos detallados de una solicitud
 export async function obtenerDetallesArticulo(solicitudId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -553,7 +538,6 @@ export async function obtenerDetallesArticulo(solicitudId: string) {
   return data || [];
 }
 
-// Obtener las cotizaciones y decisión cargadas por Compras
 export async function obtenerCotizacionCompra(solicitudId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -568,9 +552,7 @@ export async function obtenerCotizacionCompra(solicitudId: string) {
   }
   return data;
 }
-// -------------------------------------------------------------
-// FUNCIÓN AUXILIAR PARA ENVIAR EL CORREO DE RECHAZO
-// -------------------------------------------------------------
+
 async function enviarCorreoRechazoPresupuesto({
   para,
   nombreSolicitante,
@@ -608,7 +590,7 @@ async function enviarCorreoRechazoPresupuesto({
   `;
 
   await resend.emails.send({
-    from: 'Presupuesto <notificaciones@tu-dominio.com>', // Cambia por tu remitente verificado en Resend
+    from: 'Presupuesto <notificaciones@tu-dominio.com>',
     to: [para],
     subject: `❌ Solicitud Rechazada [${radicado}] - Falta de Presupuesto`,
     html: htmlContent,

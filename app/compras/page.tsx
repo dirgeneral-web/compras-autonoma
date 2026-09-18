@@ -55,6 +55,7 @@ export default function ComprasPage() {
     cotizacionVacia(),
   ]);
   const [proveedorDefinitivo, setProveedorDefinitivo] = useState<string | null>(null);
+  const [cuadroComparativo, setCuadroComparativo] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [mensajesError, setMensajesError] = useState<string[]>([]);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
@@ -102,6 +103,7 @@ export default function ComprasPage() {
   function resetFormularioCotizacion() {
     setCotizaciones([cotizacionVacia(), cotizacionVacia(), cotizacionVacia()]);
     setProveedorDefinitivo(null);
+    setCuadroComparativo('');
     setObservaciones('');
     setMensajesError([]);
     setMensajeExito(null);
@@ -217,6 +219,7 @@ export default function ComprasPage() {
       cotizacion_3: cotizacionesValidas[2] ?? null,
       proveedor_definitivo: proveedorDefinitivo || undefined,
       valor_definitivo: cotizacionGanadora ? cotizacionGanadora.valor : undefined,
+      cuadro_comparativo: cuadroComparativo.trim() || undefined,
       observaciones: observaciones.trim() || undefined,
     };
 
@@ -246,7 +249,6 @@ export default function ComprasPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
-      {/* Encabezado con Enlace Permanente a Cotizaciones */}
       <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Compras — Cotizaciones</h1>
@@ -439,7 +441,7 @@ export default function ComprasPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Selección definitiva</CardTitle>
-              <CardDescription>Elige el proveedor ganador entre las cotizaciones diligenciadas.</CardDescription>
+              <CardDescription>Elige el proveedor ganador entre las cotizaciones diligenciadas y adjunta el cuadro comparativo.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {proveedoresDisponibles.length === 0 && (
@@ -463,6 +465,19 @@ export default function ComprasPage() {
                   </label>
                 ))}
               </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="cuadro_comparativo">Enlace Cuadro Comparativo (Google Drive - Opcional)</Label>
+                <Input
+                  id="cuadro_comparativo"
+                  type="url"
+                  disabled={!solicitudEditable}
+                  placeholder="https://drive.google.com/file/d/..."
+                  value={cuadroComparativo}
+                  onChange={(evento: ChangeEvent<HTMLInputElement>) => setCuadroComparativo(evento.target.value)}
+                />
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="observaciones">Observaciones</Label>
                 <Textarea

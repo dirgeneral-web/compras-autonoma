@@ -29,7 +29,7 @@ const urlDriveSchema = z
   });
 
 /* -------------------------------------------------------------------- */
-/* 1. Creación de solicitud                                              */
+/* 1. Creación de solicitud                                             */
 /* -------------------------------------------------------------------- */
 
 export const articuloSchema = z.object({
@@ -71,7 +71,7 @@ export type CrearSolicitudInput = z.infer<typeof crearSolicitudSchema>;
 /* 2. Registro de cotizaciones (compras)                                 */
 /* -------------------------------------------------------------------- */
 
-/** Cotización obligatoria: Proveedor, valor y URL de Drive estrictamente requeridos. */
+/** Cotización obligatoria: Proveedor, valor y URL de Drive strictly requeridos. */
 const cotizacionObligatoriaSchema = z.object({
   proveedor: z.string().min(2, 'El proveedor es obligatorio.').max(200),
   valor: z.number().positive('El valor cotizado debe ser mayor a 0.'),
@@ -112,6 +112,7 @@ export const cotizacionesSchema = z
     // Selección definitiva
     proveedor_definitivo: z.string().min(2).max(200).optional(),
     valor_definitivo: z.number().positive('El valor definitivo debe ser mayor a 0.').optional(),
+    cuadro_comparativo: urlDriveSchema.optional(),
     observaciones: z.string().max(2000).optional(),
   })
   .refine(
