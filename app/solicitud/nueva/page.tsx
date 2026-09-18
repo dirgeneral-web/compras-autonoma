@@ -165,7 +165,7 @@ export default function NuevaSolicitudPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="fecha_limite_cotizacion">Fecha límite de cotización</Label>
+              <Label htmlFor="fecha_limite_cotizacion">Fecha en que requiere la compra</Label>
               <Input
                 id="fecha_limite_cotizacion"
                 type="date"
