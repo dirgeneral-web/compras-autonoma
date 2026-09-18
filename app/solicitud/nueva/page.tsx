@@ -30,12 +30,31 @@ function encabezadoVacio() {
   };
 }
 
+// Función auxiliar para verificar si la fecha seleccionada está dentro de los próximos 8 días
+function esFechaMenorA8Dias(fechaString: string): boolean {
+  if (!fechaString) return false;
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const fechaSeleccionada = new Date(`${fechaString}T00:00:00`);
+  if (isNaN(fechaSeleccionada.getTime())) return false;
+
+  const diferenciaMilisegundos = fechaSeleccionada.getTime() - hoy.getTime();
+  const diferenciaDias = Math.floor(diferenciaMilisegundos / (1000 * 60 * 60 * 24));
+
+  return diferenciaDias < 8;
+}
+
 export default function NuevaSolicitudPage() {
   const [isPending, startTransition] = useTransition();
   const [encabezado, setEncabezado] = useState(encabezadoVacio());
   const [articulos, setArticulos] = useState<ArticuloInput[]>([articuloVacio()]);
   const [mensajesError, setMensajesError] = useState<string[]>([]);
   const [radicadoCreado, setRadicadoCreado] = useState<string | null>(null);
+
+  // Validación en tiempo real para mostrar el mensaje de advertencia
+  const mostrarAdvertenciaFecha = esFechaMenorA8Dias(encabezado.fecha_limite_cotizacion);
 
   function actualizarEncabezado(campo: keyof ReturnType<typeof encabezadoVacio>, valor: string) {
     setEncabezado((prev) => ({ ...prev, [campo]: valor }));
@@ -174,6 +193,11 @@ export default function NuevaSolicitudPage() {
                   actualizarEncabezado('fecha_limite_cotizacion', evento.target.value)
                 }
               />
+              {mostrarAdvertenciaFecha && (
+                <p className="mt-1.5 rounded-md bg-amber-50 p-2 text-xs font-medium text-amber-700 border border-amber-200">
+                  ⚠️ El tiempo mínimo para atención de solicitudes es de 8 días hábiles.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="descripcion_general">Justificación de la solicitud</Label>
