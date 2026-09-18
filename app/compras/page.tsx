@@ -467,7 +467,7 @@ export default function ComprasPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="cuadro_comparativo">Enlace Cuadro Comparativo (Google Drive - Opcional)</Label>
+                <Label htmlFor="cuadro_comparativo">Cuadro Comparativo (Google Drive - Opcional)</Label>
                 <Input
                   id="cuadro_comparativo"
                   type="url"
