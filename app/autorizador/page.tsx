@@ -30,7 +30,9 @@ type SolicitudPendiente = Pick<
   | 'area_solicitante'
   | 'descripcion_general'
   | 'fecha_creacion'
->;
+> & {
+  cuadro_comparativo?: string | null;
+};
 
 function formatearMoneda(valor: any) {
   if (!valor || isNaN(Number(valor))) return '$ 0';
@@ -57,7 +59,7 @@ export default function AutorizadorPage() {
     const { data, error: errorConsulta } = await supabase
       .from('solicitudes')
       .select(
-        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion'
+        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion, cuadro_comparativo'
       )
       .eq('estado', 'Esperando Aprobación Final')
       .order('fecha_creacion', { ascending: true })
@@ -90,7 +92,6 @@ export default function AutorizadorPage() {
         return;
       }
 
-      // Quita la tarjeta resuelta de la lista
       setSolicitudes((prev) => prev.filter((s) => s.id !== id));
     });
   }
@@ -175,6 +176,9 @@ function TarjetaSolicitud({
 
     cargarInformacionAdicional();
   }, [solicitud.id]);
+
+  // Obtiene el enlace de cuadro comparativo (ya sea desde cotización o desde solicitud)
+  const enlaceCuadro = cotizacion?.cuadro_comparativo || solicitud.cuadro_comparativo;
 
   return (
     <Card className="border-slate-200 shadow-sm">
@@ -266,7 +270,35 @@ function TarjetaSolicitud({
                 )}
               </div>
 
-              {/* OPCIONES Y DRIVE LINKS */}
+              {/* BLOQUE DE CUADRO COMPARATIVO */}
+              {enlaceCuadro ? (
+                <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📊</span>
+                    <div>
+                      <p className="text-xs font-bold text-blue-900 uppercase">Cuadro Comparativo</p>
+                      <p className="text-[11px] text-blue-700">Documento de análisis y selección de ofertas</p>
+                    </div>
+                  </div>
+                  <a
+                    href={enlaceCuadro}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors shrink-0"
+                  >
+                    <span>Abrir Cuadro en Drive</span>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              ) : (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-500 italic">
+                  ℹ️ No se adjuntó enlace de cuadro comparativo para esta solicitud.
+                </div>
+              )}
+
+              {/* OPCIONES Y DRIVE LINKS INDIVIDUALES */}
               <div className="grid gap-2 sm:grid-cols-3">
                 {[1, 2, 3].map((num) => {
                   const prov = cotizacion[`proveedor_${num}`];
