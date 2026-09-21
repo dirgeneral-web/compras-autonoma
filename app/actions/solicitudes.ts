@@ -8,11 +8,9 @@ import {
   crearSolicitudSchema,
   cotizacionesSchema,
   presupuestoSchema,
-  aprobacionSchema,
   type CrearSolicitudInput,
   type CotizacionesInput,
   type PresupuestoInput,
-  type AprobacionInput,
 } from '@/lib/validations/compras';
 import type { Database, EstadoSolicitud, Json } from '@/lib/supabase/database.types';
 import { notificarCambioEstado } from '@/lib/resend';
@@ -225,6 +223,7 @@ export async function guardarCotizaciones(
       cuadro_comparativo: cuadro_comparativo ?? null,
       observaciones: observaciones ?? null,
       registrado_por: user.id,
+      actualizado_en: new Date().toISOString(),
     },
     { onConflict: 'solicitud_id' }
   );
@@ -378,15 +377,23 @@ export async function guardarPresupuesto(
 }
 
 /* -------------------------------------------------------------------- */
-/* 5. Aprobar o rechazar solicitud (rol: autorizador)                   */
+/* 5. Resolver solicitud: Aprobar, Rechazar o Devolver (rol: autorizador)*/
 /* -------------------------------------------------------------------- */
+
+const resolverSolicitudSchema = z.object({
+  id: z.string().min(1, 'El ID de la solicitud es obligatorio.'),
+  accion: z.enum(['Aprobada', 'Rechazada', 'Devuelta'], {
+    errorMap: () => ({ message: 'Acción inválida. Debe ser Aprobada, Rechazada o Devuelta.' }),
+  }),
+  observaciones: z.string().optional(),
+});
 
 export async function aprobarORechazarSolicitud(
   id: string,
-  estado: 'Aprobada' | 'Rechazada',
+  accion: 'Aprobada' | 'Rechazada' | 'Devuelta',
   observaciones?: string
 ): Promise<ActionResult<{ id: string; estado: EstadoSolicitud }>> {
-  const parsed = aprobacionSchema.safeParse({ id, estado, observaciones });
+  const parsed = resolverSolicitudSchema.safeParse({ id, accion, observaciones });
   if (!parsed.success) {
     return errorDeValidacion(parsed.error);
   }
@@ -398,13 +405,24 @@ export async function aprobarORechazarSolicitud(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { success: false, error: 'Debe iniciar sesión para aprobar o rechazar una solicitud.' };
+    return { success: false, error: 'Debe iniciar sesión para realizar esta acción.' };
   }
 
+  // Determinar el nuevo estado en la tabla 'solicitudes'
+  let nuevoEstado: EstadoSolicitud = 'Aprobada';
+  if (parsed.data.accion === 'Aprobada') {
+    nuevoEstado = 'Aprobada';
+  } else if (parsed.data.accion === 'Rechazada') {
+    nuevoEstado = 'Rechazada';
+  } else if (parsed.data.accion === 'Devuelta') {
+    nuevoEstado = 'Creada'; // Vuelve al inicio del flujo para Compras
+  }
+
+  // 1. Actualizar la tabla 'solicitudes'
   const { data: solicitudData, error } = await supabase
     .from('solicitudes')
     .update({
-      estado: parsed.data.estado,
+      estado: nuevoEstado,
       observaciones_finales: parsed.data.observaciones ?? null,
     } as any)
     .eq('id', parsed.data.id)
@@ -419,6 +437,21 @@ export async function aprobarORechazarSolicitud(
     };
   }
 
+  // 2. Si la acción es 'Devuelta', actualizar observaciones en 'cotizaciones_compras'
+  if (parsed.data.accion === 'Devuelta' && parsed.data.observaciones) {
+    const { error: errorCotizacion } = await supabase
+      .from('cotizaciones_compras')
+      .update({
+        observaciones: parsed.data.observaciones,
+        actualizado_en: new Date().toISOString(),
+      } as any)
+      .eq('solicitud_id', parsed.data.id);
+
+    if (errorCotizacion) {
+      console.warn('[aprobarORechazarSolicitud] Advertencia al actualizar cotizaciones_compras:', errorCotizacion);
+    }
+  }
+
   const solicitud = solicitudData as unknown as {
     id: string;
     estado: EstadoSolicitud;
@@ -427,9 +460,11 @@ export async function aprobarORechazarSolicitud(
     correo_solicitante: string;
   };
 
+  revalidatePath('/', 'layout');
   revalidatePath('/solicitudes');
   revalidatePath(`/solicitudes/${parsed.data.id}`);
 
+  // 3. Notificaciones por correo electrónico
   if (solicitud.radicado) {
     try {
       await notificarCambioEstado({
@@ -439,6 +474,17 @@ export async function aprobarORechazarSolicitud(
         estado: solicitud.estado,
         observaciones: parsed.data.observaciones ?? null,
       });
+
+      // Si fue devuelta, avisar al equipo de Compras para que revisen el requerimiento nuevamente
+      if (parsed.data.accion === 'Devuelta' && process.env.CORREO_COMPRAS) {
+        await notificarCambioEstado({
+          correoSolicitante: process.env.CORREO_COMPRAS,
+          nombreSolicitante: 'Equipo de Compras',
+          radicado: solicitud.radicado,
+          estado: 'Creada',
+          observaciones: parsed.data.observaciones ?? null,
+        });
+      }
     } catch (emailError) {
       console.error('[aprobarORechazarSolicitud] Error enviando correo:', emailError);
     }

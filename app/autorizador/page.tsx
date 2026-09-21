@@ -32,6 +32,8 @@ type SolicitudPendiente = Pick<
   | 'fecha_creacion'
 >;
 
+type AccionDecision = 'Aprobada' | 'Rechazada' | 'Devuelta';
+
 function formatearMoneda(valor: any) {
   if (!valor || isNaN(Number(valor))) return '$ 0';
   return new Intl.NumberFormat('es-CO', {
@@ -77,12 +79,12 @@ export default function AutorizadorPage() {
     cargarPendientes();
   }, []);
 
-  function resolver(id: string, estado: 'Aprobada' | 'Rechazada') {
+  function resolver(id: string, accion: AccionDecision) {
     setIdEnProceso(id);
     const observaciones = observacionesPorId[id];
 
     startTransition(async () => {
-      const respuesta = await aprobarORechazarSolicitud(id, estado, observaciones || undefined);
+      const respuesta = await aprobarORechazarSolicitud(id, accion, observaciones || undefined);
       setIdEnProceso(null);
 
       if (!respuesta.success) {
@@ -141,7 +143,7 @@ interface TarjetaSolicitudProps {
   observacion: string;
   onObservacionChange: (val: string) => void;
   enProceso: boolean;
-  onResolver: (id: string, estado: 'Aprobada' | 'Rechazada') => void;
+  onResolver: (id: string, accion: AccionDecision) => void;
 }
 
 function TarjetaSolicitud({
@@ -175,7 +177,6 @@ function TarjetaSolicitud({
     cargarInformacionAdicional();
   }, [solicitud.id]);
 
-  // Obtiene el enlace del cuadro comparativo directamente desde la tabla cotizaciones_compras
   const enlaceCuadro = cotizacion?.cuadro_comparativo;
 
   return (
@@ -352,36 +353,49 @@ function TarjetaSolicitud({
         {/* 4. CAMPO DE OBSERVACIONES DEL AUTORIZADOR */}
         <div className="pt-2 border-t border-slate-100">
           <label className="text-xs font-semibold text-slate-600 mb-1 block">
-            Observaciones o Comentarios del Autorizador:
+            Observaciones / Motivo de devolución o rechazo:
           </label>
           <Textarea
             rows={2}
-            placeholder="Escribe comentarios u observaciones de la decisión (opcional para aprobar, recomendado para rechazar)..."
+            placeholder="Escribe comentarios u observaciones de la decisión (requerido si vas a devolver o rechazar la solicitud)..."
             value={observacion}
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onObservacionChange(e.target.value)}
           />
         </div>
       </CardContent>
 
-      <CardFooter className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {/* TRES BOTONES DE DECISIÓN */}
+      <CardFooter className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Button
           type="button"
-          size="lg"
+          size="default"
           disabled={enProceso}
           onClick={() => onResolver(solicitud.id, 'Aprobada')}
           className="w-full bg-green-600 text-white hover:bg-green-700"
         >
           ✅ Aprobar Compra
         </Button>
+
         <Button
           type="button"
-          size="lg"
+          size="default"
+          variant="outline"
+          disabled={enProceso}
+          onClick={() => onResolver(solicitud.id, 'Devuelta')}
+          className="w-full border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+        >
+          ↩ Devolver a Compras
+        </Button>
+
+        <Button
+          type="button"
+          size="default"
           variant="outline"
           disabled={enProceso}
           onClick={() => onResolver(solicitud.id, 'Rechazada')}
           className="w-full border-red-300 text-red-700 hover:bg-red-50"
         >
-          ↩ Rechazar / Devolver
+          ❌ Rechazar Compra
         </Button>
       </CardFooter>
     </Card>
