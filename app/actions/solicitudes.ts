@@ -383,7 +383,7 @@ export async function guardarPresupuesto(
 const resolverSolicitudSchema = z.object({
   id: z.string().min(1, 'El ID de la solicitud es obligatorio.'),
   accion: z.enum(['Aprobada', 'Rechazada', 'Devuelta'], {
-    errorMap: () => ({ message: 'Acción inválida. Debe ser Aprobada, Rechazada o Devuelta.' }),
+  message: 'Acción inválida. Debe ser Aprobada, Rechazada o Devuelta.' }),
   }),
   observaciones: z.string().optional(),
 });
