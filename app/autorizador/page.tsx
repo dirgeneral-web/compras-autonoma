@@ -30,9 +30,7 @@ type SolicitudPendiente = Pick<
   | 'area_solicitante'
   | 'descripcion_general'
   | 'fecha_creacion'
-> & {
-  cuadro_comparativo?: string | null;
-};
+>;
 
 function formatearMoneda(valor: any) {
   if (!valor || isNaN(Number(valor))) return '$ 0';
@@ -59,7 +57,7 @@ export default function AutorizadorPage() {
     const { data, error: errorConsulta } = await supabase
       .from('solicitudes')
       .select(
-        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion, cuadro_comparativo'
+        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion'
       )
       .eq('estado', 'Esperando Aprobación Final')
       .order('fecha_creacion', { ascending: true })
@@ -136,7 +134,7 @@ export default function AutorizadorPage() {
 }
 
 // ----------------------------------------------------------------------
-// COMPONENTE PARA CADA TARJETA DE SOLICITUD (CON ARTÍCULOS Y COTIZACIONES)
+// COMPONENTE PARA CADA TARJETA DE SOLICITUD
 // ----------------------------------------------------------------------
 interface TarjetaSolicitudProps {
   solicitud: SolicitudPendiente;
@@ -177,8 +175,8 @@ function TarjetaSolicitud({
     cargarInformacionAdicional();
   }, [solicitud.id]);
 
-  // Obtiene el enlace de cuadro comparativo (ya sea desde cotización o desde solicitud)
-  const enlaceCuadro = cotizacion?.cuadro_comparativo || solicitud.cuadro_comparativo;
+  // Obtiene el enlace del cuadro comparativo directamente desde la tabla cotizaciones_compras
+  const enlaceCuadro = cotizacion?.cuadro_comparativo;
 
   return (
     <Card className="border-slate-200 shadow-sm">
@@ -288,7 +286,7 @@ function TarjetaSolicitud({
                   >
                     <span>Abrir Cuadro en Drive</span>
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                   </a>
                 </div>
