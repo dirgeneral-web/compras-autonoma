@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import type { ChangeEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   aprobarORechazarSolicitud,
@@ -30,7 +31,9 @@ type SolicitudPendiente = Pick<
   | 'area_solicitante'
   | 'descripcion_general'
   | 'fecha_creacion'
->;
+> & {
+  cuadro_comparativo?: string | null;
+};
 
 type AccionDecision = 'Aprobada' | 'Rechazada' | 'Devuelta';
 
@@ -44,12 +47,50 @@ function formatearMoneda(valor: any) {
 }
 
 export default function AutorizadorPage() {
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificandoAuth, setVerificandoAuth] = useState(true);
+
   const [solicitudes, setSolicitudes] = useState<SolicitudPendiente[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [observacionesPorId, setObservacionesPorId] = useState<Record<string, string>>({});
   const [idEnProceso, setIdEnProceso] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // 1. Verificación de permisos y rol autorizador
+  useEffect(() => {
+    const verificarPermisos = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      const email = user.email?.toLowerCase() || '';
+
+      if (email !== 'autorizador@uniautonoma.edu.co') {
+        router.replace('/solicitud/nueva');
+        return;
+      }
+
+      setAutorizado(true);
+      setVerificandoAuth(false);
+    };
+
+    verificarPermisos();
+  }, [router]);
+
+  // 2. Cargar solicitudes una vez confirmado el permiso
+  useEffect(() => {
+    if (autorizado) {
+      cargarPendientes();
+    }
+  }, [autorizado]);
 
   async function cargarPendientes() {
     setCargando(true);
@@ -59,7 +100,7 @@ export default function AutorizadorPage() {
     const { data, error: errorConsulta } = await supabase
       .from('solicitudes')
       .select(
-        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion'
+        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion, cuadro_comparativo'
       )
       .eq('estado', 'Esperando Aprobación Final')
       .order('fecha_creacion', { ascending: true })
@@ -75,10 +116,6 @@ export default function AutorizadorPage() {
     setSolicitudes(data ?? []);
   }
 
-  useEffect(() => {
-    cargarPendientes();
-  }, []);
-
   function resolver(id: string, accion: AccionDecision) {
     setIdEnProceso(id);
     const observaciones = observacionesPorId[id];
@@ -92,8 +129,21 @@ export default function AutorizadorPage() {
         return;
       }
 
+      // Eliminar la solicitud de la vista al ser procesada
       setSolicitudes((prev) => prev.filter((s) => s.id !== id));
     });
+  }
+
+  if (verificandoAuth) {
+    return (
+      <main className="mx-auto max-w-4xl px-4 py-12 text-center text-sm text-slate-600">
+        Verificando permisos de acceso de Autorizador...
+      </main>
+    );
+  }
+
+  if (!autorizado) {
+    return null;
   }
 
   return (
@@ -103,17 +153,17 @@ export default function AutorizadorPage() {
           Aprobaciones pendientes
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {solicitudes.length} solicitud{solicitudes.length === 1 ? '' : 'es'} esperando tu decisión.
+          {solicitudes.length} solicitud{solicitudes.length === 1 ? '' : 'es'} esperando tu decisión final.
         </p>
       </div>
 
       {error && <p className="mb-4 text-sm font-medium text-red-600">{error}</p>}
 
-      {cargando && <p className="text-sm text-slate-500">Cargando…</p>}
+      {cargando && <p className="text-sm text-slate-500">Cargando solicitudes…</p>}
 
       {!cargando && solicitudes.length === 0 && !error && (
         <p className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-          No hay solicitudes pendientes de aprobación. 🎉
+          No hay solicitudes pendientes de aprobación final. 🎉
         </p>
       )}
 
@@ -177,7 +227,7 @@ function TarjetaSolicitud({
     cargarInformacionAdicional();
   }, [solicitud.id]);
 
-  const enlaceCuadro = cotizacion?.cuadro_comparativo;
+  const enlaceCuadro = cotizacion?.cuadro_comparativo || solicitud.cuadro_comparativo;
 
   return (
     <Card className="border-slate-200 shadow-sm">
