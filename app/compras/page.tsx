@@ -1,9 +1,10 @@
 'use client';
 
+import { redirect } from 'next/navigation';
 import { useState, useEffect, useTransition } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { guardarCotizaciones, type ActionResult } from '@/app/actions/solicitudes';
 import { cotizacionesSchema, type CotizacionIndividualInput } from '@/lib/validations/compras';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,25 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { EstadoSolicitud } from '@/lib/supabase/database.types';
+
+export default async function CotizacionesPage() {
+  const supabase = await createClient();
+const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // 1. Si no está autenticado, enviar al login
+  if (!user) {
+    redirect('/login');
+  }
+
+  const email = user.email?.toLowerCase() || '';
+
+  // 2. Solo permitir el acceso a cotizaciones@uniautonoma.edu.co
+  if (email !== 'cotizaciones@uniautonoma.edu.co') {
+    redirect('/solicitud/nueva');
+  }
+
 
 type DetalleArticulo = {
   id: string;
@@ -513,4 +533,5 @@ export default function ComprasPage() {
       )}
     </main>
   );
+}
 }

@@ -195,6 +195,13 @@ export async function guardarCotizaciones(
     return { success: false, error: 'Debe iniciar sesión para registrar cotizaciones.' };
   }
 
+  if (!user || user.email?.toLowerCase() !== 'cotizaciones@uniautonoma.edu.co') {
+    return {
+      success: false,
+      error: 'No tienes permisos para guardar registros de compras o cotizaciones.',
+    };
+  }
+
   const {
     solicitud_id,
     cotizacion_1,
