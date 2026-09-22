@@ -31,9 +31,7 @@ type SolicitudPendiente = Pick<
   | 'area_solicitante'
   | 'descripcion_general'
   | 'fecha_creacion'
-> & {
-  cuadro_comparativo?: string | null;
-};
+>;
 
 type AccionDecision = 'Aprobada' | 'Rechazada' | 'Devuelta';
 
@@ -100,7 +98,7 @@ export default function AutorizadorPage() {
     const { data, error: errorConsulta } = await supabase
       .from('solicitudes')
       .select(
-        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion, cuadro_comparativo'
+        'id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, fecha_creacion'
       )
       .eq('estado', 'Esperando Aprobación Final')
       .order('fecha_creacion', { ascending: true })
@@ -227,7 +225,8 @@ function TarjetaSolicitud({
     cargarInformacionAdicional();
   }, [solicitud.id]);
 
-  const enlaceCuadro = cotizacion?.cuadro_comparativo || solicitud.cuadro_comparativo;
+  // Se extrae directamente del objeto de la cotización
+  const enlaceCuadro = cotizacion?.cuadro_comparativo;
 
   return (
     <Card className="border-slate-200 shadow-sm">
