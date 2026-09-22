@@ -314,7 +314,8 @@ export async function guardarPresupuesto(
   if (!user) {
     return { success: false, error: 'Debe iniciar sesión para clasificar el presupuesto.' };
   }
-// 🔒 VALIDACIÓN DE ROL: Evita que roles como 'compras' ejecuten esta acción
+
+  // 🔒 VALIDACIÓN DE ROL: Evita que roles como 'compras' ejecuten esta acción
   const rolUsuario = user.user_metadata?.rol;
   if (rolUsuario !== 'presupuesto') {
     return { 
@@ -487,6 +488,17 @@ export async function aprobarORechazarSolicitud(
         estado: solicitud.estado,
         observaciones: parsed.data.observaciones ?? null,
       });
+
+      // Si la solicitud fue aprobada, avisar también al correo de compras/cotizaciones para notificar al proveedor
+      if (parsed.data.accion === 'Aprobada') {
+        await notificarCambioEstado({
+          correoSolicitante: 'cotizaciones@uniautonoma.edu.co',
+          nombreSolicitante: 'Equipo de Compras / Cotizaciones',
+          radicado: solicitud.radicado,
+          estado: 'Aprobada',
+          observaciones: parsed.data.observaciones ?? null,
+        });
+      }
 
       // Si fue devuelta, avisar al equipo de Compras para que revisen el requerimiento nuevamente
       if (parsed.data.accion === 'Devuelta' && process.env.CORREO_COMPRAS) {
