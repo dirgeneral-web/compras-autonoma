@@ -307,6 +307,14 @@ export async function guardarPresupuesto(
   if (!user) {
     return { success: false, error: 'Debe iniciar sesión para clasificar el presupuesto.' };
   }
+// 🔒 VALIDACIÓN DE ROL: Evita que roles como 'compras' ejecuten esta acción
+  const rolUsuario = user.user_metadata?.rol;
+  if (rolUsuario !== 'presupuesto') {
+    return { 
+      success: false, 
+      error: 'No tienes permisos de Presupuesto para realizar esta acción.' 
+    };
+  }
 
   const { solicitud_id, proyecto, centro_costo, unidad_negocio, producto, campos_adicionales } = parsed.data;
 
