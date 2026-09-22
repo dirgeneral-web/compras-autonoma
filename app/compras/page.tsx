@@ -1,10 +1,10 @@
 'use client';
 
-import { redirect } from 'next/navigation';
 import { useState, useEffect, useTransition } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { guardarCotizaciones, type ActionResult } from '@/app/actions/solicitudes';
 import { cotizacionesSchema, type CotizacionIndividualInput } from '@/lib/validations/compras';
 import { Button } from '@/components/ui/button';
@@ -14,25 +14,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { EstadoSolicitud } from '@/lib/supabase/database.types';
-
-export default async function CotizacionesPage() {
-  const supabase = await createClient();
-const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // 1. Si no está autenticado, enviar al login
-  if (!user) {
-    redirect('/login');
-  }
-
-  const email = user.email?.toLowerCase() || '';
-
-  // 2. Solo permitir el acceso a cotizaciones@uniautonoma.edu.co
-  if (email !== 'cotizaciones@uniautonoma.edu.co') {
-    redirect('/solicitud/nueva');
-  }
-
 
 type DetalleArticulo = {
   id: string;
@@ -62,6 +43,10 @@ function cotizacionVacia(): CotizacionIndividualInput {
 }
 
 export default function ComprasPage() {
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificandoAuth, setVerificandoAuth] = useState(true);
+
   const [pendientes, setPendientes] = useState<SolicitudDetalle[]>([]);
   const [cargandoPendientes, setCargandoPendientes] = useState(true);
   const [radicadoBuscado, setRadicadoBuscado] = useState('');
@@ -81,14 +66,44 @@ export default function ComprasPage() {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Validar permisos de acceso
   useEffect(() => {
-    cargarPendientes();
-  }, []);
+    const verificarPermisos = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      const email = user.email?.toLowerCase() || '';
+
+      if (email !== 'cotizaciones@uniautonoma.edu.co') {
+        router.replace('/solicitud/nueva');
+        return;
+      }
+
+      setAutorizado(true);
+      setVerificandoAuth(false);
+    };
+
+    verificarPermisos();
+  }, [router]);
+
+  // Cargar lista de pendientes únicamente al estar autorizado
+  useEffect(() => {
+    if (autorizado) {
+      cargarPendientes();
+    }
+  }, [autorizado]);
 
   async function cargarPendientes() {
     setCargandoPendientes(true);
     const supabase = createClient();
-    
+
     const { data, error } = await supabase
       .from('solicitudes')
       .select('id, radicado, nombre_solicitante, correo_solicitante, area_solicitante, descripcion_general, estado')
@@ -263,6 +278,18 @@ export default function ComprasPage() {
 
       cargarPendientes();
     });
+  }
+
+  if (verificandoAuth) {
+    return (
+      <main className="mx-auto max-w-4xl px-4 py-12 text-center text-sm text-slate-600">
+        Verificando permisos de acceso...
+      </main>
+    );
+  }
+
+  if (!autorizado) {
+    return null;
   }
 
   const solicitudEditable = solicitud ? ESTADOS_EDITABLES.includes(solicitud.estado) : false;
@@ -533,5 +560,4 @@ export default function ComprasPage() {
       )}
     </main>
   );
-}
 }
