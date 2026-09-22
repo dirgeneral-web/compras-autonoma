@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import {
   obtenerSolicitudesPresupuesto,
   guardarPresupuesto,
@@ -31,6 +33,10 @@ interface CampoAdicional {
 }
 
 export default function PresupuestoPage() {
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificandoAuth, setVerificandoAuth] = useState(true);
+
   const [solicitudes, setSolicitudes] = useState<SolicitudCompleta[]>([]);
   const [solicitud, setSolicitud] = useState<SolicitudCompleta | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -79,24 +85,59 @@ export default function PresupuestoPage() {
   const [cotizacion, setCotizacion] = useState<any | null>(null);
   const [cargandoDetalles, setCargandoDetalles] = useState(false);
 
-  // Cargar artículos y cotización cada vez que se seleccione una solicitud
+  // 1. Validar permisos de acceso (solo presupuesto@uniautonoma.edu.co)
   useEffect(() => {
-    // Si no hay solicitud seleccionada, limpiamos estados y salimos
+    const verificarPermisos = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      const email = user.email?.toLowerCase() || '';
+
+      if (email !== 'presupuesto@uniautonoma.edu.co') {
+        router.replace('/solicitud/nueva');
+        return;
+      }
+
+      setAutorizado(true);
+      setVerificandoAuth(false);
+    };
+
+    verificarPermisos();
+  }, [router]);
+
+  // 2. Cargar listas cuando el usuario esté autorizado
+  useEffect(() => {
+    if (autorizado) {
+      cargarSolicitudesPendientes();
+      cargarListaCentrosCosto();
+      cargarListaUnidadesNegocio();
+      cargarListaProductos();
+    }
+  }, [autorizado]);
+
+  // 3. Cargar artículos y cotización cada vez que se seleccione una solicitud
+  useEffect(() => {
     if (!solicitud) {
       setArticulos([]);
       setCotizacion(null);
       return;
     }
 
-    // Guardamos el ID en una constante para que TypeScript sepa que no es null
     const id = solicitud.id;
 
     async function cargarDetallesAdicionales() {
       setCargandoDetalles(true);
-      
+
       const [articulosData, cotizacionData] = await Promise.all([
-        obtenerDetallesArticulo(id),   // 👈 Usamos 'id' en lugar de 'solicitud.id'
-        obtenerCotizacionCompra(id)    // 👈 Usamos 'id' en lugar de 'solicitud.id'
+        obtenerDetallesArticulo(id),
+        obtenerCotizacionCompra(id),
       ]);
 
       setArticulos(articulosData);
@@ -106,13 +147,6 @@ export default function PresupuestoPage() {
 
     cargarDetallesAdicionales();
   }, [solicitud]);
-
-  useEffect(() => {
-    cargarSolicitudesPendientes();
-    cargarListaCentrosCosto();
-    cargarListaUnidadesNegocio();
-    cargarListaProductos();
-  }, []);
 
   async function cargarListaCentrosCosto() {
     const datos = await obtenerCentrosCosto();
@@ -205,23 +239,23 @@ export default function PresupuestoPage() {
   }
 
   function handleSeleccionarSolicitud(solicitudId: string) {
-  setErrorCarga(null);
-  setMensajeExito(null);
-  setMensajesError([]);
-  setModoAccion('clasificar');
+    setErrorCarga(null);
+    setMensajeExito(null);
+    setMensajesError([]);
+    setModoAccion('clasificar');
 
-  const seleccionada =
-    solicitudes.find((s) => String(s.id) === String(solicitudId)) || null;
+    const seleccionada =
+      solicitudes.find((s) => String(s.id) === String(solicitudId)) || null;
 
-  setSolicitud(seleccionada);
-  setProyecto('');
-  setCentroCosto('');
-  setUnidadNegocio('');
-  setProducto('');
-  setCamposAdicionales([]);
-}
+    setSolicitud(seleccionada);
+    setProyecto('');
+    setCentroCosto('');
+    setUnidadNegocio('');
+    setProducto('');
+    setCamposAdicionales([]);
+  }
 
-function handleRechazarSolicitud() {
+  function handleRechazarSolicitud() {
     if (!solicitud || !motivoRechazo.trim()) return;
 
     setMensajesError([]);
@@ -308,18 +342,30 @@ function handleRechazarSolicitud() {
     });
   }
 
+  if (verificandoAuth) {
+    return (
+      <main className="mx-auto max-w-4xl px-4 py-12 text-center text-sm text-slate-600">
+        Verificando permisos de acceso...
+      </main>
+    );
+  }
+
+  if (!autorizado) {
+    return null;
+  }
+
   const nombreSolicitante = solicitud?.nombre_solicitante || 'Sin nombre';
   const emailSolicitante = solicitud?.correo_solicitante;
   const dependenciaSolicitante = solicitud?.area_solicitante || 'No especificada';
   const descripcionJustificacion = solicitud?.descripcion_general || 'Sin descripción proporcionada';
-  // ✅ DA PRIORIDAD A 'articulos' OBTENIDOS DE LA BASE DE DATOS:
+
   const itemsLista: ItemSolicitud[] =
-  articulos.length > 0
-    ? articulos
-    : Array.isArray(solicitud?.items)
-    ? solicitud.items
-    : []; 
-  
+    articulos.length > 0
+      ? articulos
+      : Array.isArray(solicitud?.items)
+      ? solicitud.items
+      : [];
+
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <div className="mb-8">
@@ -755,69 +801,67 @@ function handleRechazarSolicitud() {
                           onChange={(evento: ChangeEvent<HTMLInputElement>) =>
                             actualizarCampoAdicional(indice, 'valor', evento.target.value)
                           }
+                          placeholder="Valor o detalle"
                         />
                       </div>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
+                        size="icon"
                         onClick={() => eliminarCampoAdicional(indice)}
-                        className="text-red-600 hover:text-red-700"
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
                       >
                         ✕
                       </Button>
                     </div>
                   ))}
 
-                  <Button type="button" variant="outline" onClick={agregarCampoAdicional}>
-                    [+] Añadir campo adicional
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={agregarCampoAdicional}
+                    className="mt-2"
+                  >
+                    + Agregar campo adicional
                   </Button>
                 </CardContent>
               </Card>
 
-              <div className="pt-2">
-                <Button type="submit" size="lg" disabled={isPending} className="w-full sm:w-auto">
-                  {isPending ? 'Guardando clasificación…' : 'Guardar y aprobar clasificación'}
-                </Button>
-              </div>
+              <Button type="submit" size="lg" disabled={isPending} className="w-full sm:w-auto">
+                {isPending ? 'Guardando…' : 'Aprobar y Guardar Presupuesto'}
+              </Button>
             </form>
           )}
 
-          {/* OPCIÓN 2: RECHAZAR SOLICITUD */}
+          {/* OPCIÓN 2: RECHAZAR */}
           {modoAccion === 'rechazar' && (
             <Card className="border-red-200 bg-red-50/30">
               <CardHeader>
-                <CardTitle className="text-lg text-red-900">Rechazo de Solicitud</CardTitle>
-                <CardDescription className="text-red-700">
-                  Ingresa la notificación que recibirá el usuario. La solicitud cambiará su estado a <strong>'Rechazada'</strong> sin clasificar ningún rubro.
+                <CardTitle className="text-lg text-red-900">Rechazar Solicitud</CardTitle>
+                <CardDescription>
+                  Indica la razón por la cual no es posible aprobar el presupuesto para esta solicitud.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="motivo_rechazo" className="text-red-900 font-semibold">
-                    Motivo de rechazo / Notificación al solicitante:
-                  </Label>
+                  <Label htmlFor="motivo_rechazo">Motivo de rechazo</Label>
                   <Textarea
                     id="motivo_rechazo"
+                    rows={4}
                     value={motivoRechazo}
                     onChange={(e) => setMotivoRechazo(e.target.value)}
-                    placeholder="Escribe la razón detallada del rechazo..."
-                    className="bg-white border-red-200 text-sm focus:ring-red-500"
-                    rows={4}
+                    placeholder="Escribe el motivo detallado del rechazo..."
                   />
                 </div>
-
-                <div className="pt-2">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="lg"
-                    onClick={handleRechazarSolicitud}
-                    disabled={isPendingRechazo || !motivoRechazo.trim()}
-                    className="w-full sm:w-auto"
-                  >
-                    {isPendingRechazo ? 'Procesando rechazo…' : 'Confirmar y Notificar Rechazo'}
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isPendingRechazo || !motivoRechazo.trim()}
+                  onClick={handleRechazarSolicitud}
+                >
+                  {isPendingRechazo ? 'Rechazando…' : 'Confirmar y Rechazar Solicitud'}
+                </Button>
               </CardContent>
             </Card>
           )}
