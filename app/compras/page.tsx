@@ -5,7 +5,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { guardarCotizaciones, type ActionResult } from '@/app/actions/solicitudes';
+import { guardarCotizaciones, aprobarORechazarSolicitud, type ActionResult } from '@/app/actions/solicitudes';
 import { cotizacionesSchema, type CotizacionIndividualInput } from '@/lib/validations/compras';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,6 +62,11 @@ export default function ComprasPage() {
   const [proveedorDefinitivo, setProveedorDefinitivo] = useState<string | null>(null);
   const [cuadroComparativo, setCuadroComparativo] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  
+  // Estados para el rechazo de la solicitud
+  const [mostrarRechazo, setMostrarRechazo] = useState(false);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+
   const [mensajesError, setMensajesError] = useState<string[]>([]);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -140,6 +145,8 @@ export default function ComprasPage() {
     setProveedorDefinitivo(null);
     setCuadroComparativo('');
     setObservaciones('');
+    setMostrarRechazo(false);
+    setMotivoRechazo('');
     setMensajesError([]);
     setMensajeExito(null);
   }
@@ -276,6 +283,37 @@ export default function ComprasPage() {
       setMensajeExito(`Cotizaciones guardadas correctamente. Nuevo estado: ${respuesta.data.estado}.`);
       setSolicitud((prev) => (prev ? { ...prev, estado: respuesta.data.estado } : prev));
 
+      cargarPendientes();
+    });
+  }
+
+  // Función para rechazar la solicitud desde el módulo de Compras
+  function handleRechazarSolicitud() {
+    if (!solicitud) return;
+    if (!motivoRechazo.trim()) {
+      setMensajesError(['Debe indicar el motivo o justificación para rechazar la solicitud.']);
+      return;
+    }
+
+    setMensajesError([]);
+    setMensajeExito(null);
+
+    startTransition(async () => {
+      const respuesta = await aprobarORechazarSolicitud(
+        solicitud.id,
+        'Rechazada',
+        motivoRechazo.trim()
+      );
+
+      if (!respuesta.success) {
+        setMensajesError([respuesta.error]);
+        return;
+      }
+
+      setMensajeExito(`La solicitud ${solicitud.radicado || ''} ha sido rechazada exitosamente.`);
+      setSolicitud((prev) => (prev ? { ...prev, estado: 'Rechazada' } : prev));
+      setMostrarRechazo(false);
+      setMotivoRechazo('');
       cargarPendientes();
     });
   }
@@ -539,6 +577,49 @@ export default function ComprasPage() {
             </CardContent>
           </Card>
 
+          {/* PANEL OPCIONAL PARA INGRESAR MOTIVO DE RECHAZO */}
+          {mostrarRechazo && (
+            <Card className="border-red-200 bg-red-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-red-800">Rechazar Solicitud de Compra</CardTitle>
+                <CardDescription className="text-xs text-red-600">
+                  Indica el motivo o razón por la cual rechazas esta solicitud. Se enviará una notificación por correo al solicitante.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Textarea
+                  rows={3}
+                  placeholder="Escribe la justificación del rechazo..."
+                  value={motivoRechazo}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setMotivoRechazo(e.target.value)}
+                  className="bg-white border-red-300 focus-visible:ring-red-500"
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setMostrarRechazo(false);
+                      setMotivoRechazo('');
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isPending || !motivoRechazo.trim()}
+                    onClick={handleRechazarSolicitud}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {isPending ? 'Procesando…' : 'Confirmar Rechazo'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {mensajesError.length > 0 && (
             <div role="alert" className="space-y-1 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {mensajesError.map((mensaje, i) => (
@@ -553,9 +634,22 @@ export default function ComprasPage() {
             </p>
           )}
 
-          <Button type="submit" size="lg" disabled={isPending || !solicitudEditable} className="w-full sm:w-auto">
-            {isPending ? 'Guardando…' : 'Guardar cotizaciones'}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button type="submit" size="lg" disabled={isPending || !solicitudEditable} className="w-full sm:w-auto">
+              {isPending ? 'Guardando…' : 'Guardar cotizaciones'}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              disabled={isPending || !solicitudEditable}
+              onClick={() => setMostrarRechazo(!mostrarRechazo)}
+              className="w-full sm:w-auto border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+            >
+              ❌ Rechazar solicitud
+            </Button>
+          </div>
         </form>
       )}
     </main>
