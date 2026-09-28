@@ -42,18 +42,18 @@ interface NotificacionEstadoParams {
   radicado: string;
   estado: EstadoSolicitud;
   observaciones?: string | null;
+  esParaCompras?: boolean; // Flag opcional para forzar la visualización en correos a compras
 }
 
 type NotificacionResultado = { success: true } | { success: false; error: string };
 
 /**
- * Envía un correo transaccional al `correo_solicitante` cuando cambia el
- * estado de su solicitud.
+ * Envía un correo transaccional al destinatario correspondiente.
  */
 export async function notificarCambioEstado(
   params: NotificacionEstadoParams
 ): Promise<NotificacionResultado> {
-  const { correoSolicitante, nombreSolicitante, radicado, estado, observaciones } = params;
+  const { correoSolicitante, nombreSolicitante, radicado, estado, observaciones, esParaCompras } = params;
 
   if (!process.env.RESEND_API_KEY) {
     console.warn('[resend] RESEND_API_KEY no está configurada; se omite el envío de correo.');
@@ -66,6 +66,10 @@ export async function notificarCambioEstado(
     console.error(`[resend] Estado desconocido o sin plantilla definida: ${estado}`);
     return { success: false, error: `Estado ${estado} no reconocido.` };
   }
+
+  // Verifica si el correo va dirigido al área de Compras
+  const esCorreoCompras =
+    Boolean(esParaCompras) || correoSolicitante.toLowerCase() === 'cotizaciones@uniautonoma.edu.co';
 
   try {
     console.log(`[resend] Intentando enviar notificación a ${correoSolicitante} para radicado ${radicado}...`);
@@ -85,7 +89,7 @@ export async function notificarCambioEstado(
           ${observaciones ? `<p><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
           
           ${
-            estado === 'Creada' || estado === 'En Cotización'
+            esCorreoCompras && (estado === 'Creada' || estado === 'En Cotización')
               ? `
             <div style="margin: 25px 0; text-align: center;">
               <a href="https://compras-autonoma.vercel.app/compras" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
