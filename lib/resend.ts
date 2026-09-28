@@ -83,6 +83,22 @@ export async function notificarCambioEstado(
           <p><strong>Número de Radicado:</strong> ${radicado}</p>
           <p><strong>Estado Actual:</strong> <span style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${estado}</span></p>
           ${observaciones ? `<p><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
+          
+          ${
+            estado === 'Creada' || estado === 'En Cotización'
+              ? `
+            <div style="margin: 25px 0; text-align: center;">
+              <a href="https://compras-autonoma.vercel.app/compras" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+                📋 Gestionar Cotizaciones en el Módulo de Compras
+              </a>
+              <p style="margin-top: 8px; font-size: 0.8rem; color: #64748b;">
+                Enlace directo: <a href="https://compras-autonoma.vercel.app/compras" style="color: #2563eb;">https://compras-autonoma.vercel.app/compras</a>
+              </p>
+            </div>
+            `
+              : ''
+          }
+
           <br/>
           <p style="font-size: 0.85rem; color: #64748b;">Puedes consultar el estado de tu solicitud en cualquier momento ingresando tu radicado en el buscador público del sistema.</p>
         </div>
