@@ -9,11 +9,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Obtiene el remitente desde Vercel o usa el de prueba como respaldo
 const REMITENTE = process.env.RESEND_FROM_EMAIL || 'Sistema de Compras <onboarding@resend.dev>';
 const CORREO_COMPRAS = 'cotizaciones@uniautonoma.edu.co';
+const CORREO_PRESUPUESTO = 'presupuesto@uniautonoma.edu.co';
 
 const MENSAJES_POR_ESTADO: Record<EstadoSolicitud, { asunto: string; cuerpo: string }> = {
   Creada: {
     asunto: 'Hemos recibido tu solicitud de compra',
-    cuerpo: 'Solicitud registrada exitosamente y está pendiente de gestión por el área de compras.',
+    cuerpo: 'Tu solicitud fue registrada exitosamente y está pendiente de gestión por el área de compras.',
   },
   'En Cotización': {
     asunto: 'Tu solicitud está en proceso de cotización',
@@ -21,7 +22,7 @@ const MENSAJES_POR_ESTADO: Record<EstadoSolicitud, { asunto: string; cuerpo: str
   },
   'En Revisión Presupuestal': {
     asunto: 'Tu solicitud pasó a revisión presupuestal',
-    cuerpo: 'El área de presupuesto está clasificando tu solicitud.',
+    cuerpo: 'El área de presupuesto está clasificando la rubración/presupuesto de tu solicitud.',
   },
   'Esperando Aprobación Final': {
     asunto: 'Tu solicitud está a la espera de aprobación final',
@@ -43,7 +44,8 @@ interface NotificacionEstadoParams {
   radicado: string;
   estado: EstadoSolicitud;
   observaciones?: string | null;
-  esParaCompras?: boolean; // Flag explícito para mostrar o no el botón
+  esParaCompras?: boolean;     // Flag para mostrar botón de Compras
+  esParaPresupuesto?: boolean; // Flag para mostrar botón de Presupuesto
 }
 
 type NotificacionResultado = { success: true } | { success: false; error: string };
@@ -54,7 +56,15 @@ type NotificacionResultado = { success: true } | { success: false; error: string
 export async function notificarCambioEstado(
   params: NotificacionEstadoParams
 ): Promise<NotificacionResultado> {
-  const { correoSolicitante, nombreSolicitante, radicado, estado, observaciones, esParaCompras } = params;
+  const {
+    correoSolicitante,
+    nombreSolicitante,
+    radicado,
+    estado,
+    observaciones,
+    esParaCompras,
+    esParaPresupuesto,
+  } = params;
 
   if (!process.env.RESEND_API_KEY) {
     console.warn('[resend] RESEND_API_KEY no está configurada; se omite el envío de correo.');
@@ -68,9 +78,12 @@ export async function notificarCambioEstado(
     return { success: false, error: `Estado ${estado} no reconocido.` };
   }
 
-  // Muestra el botón SOLO si esParaCompras es true o el destinatario es el correo de Compras
+  // Evalúa si el destinatario es Compras o Presupuesto
   const esCorreoCompras =
     esParaCompras === true || correoSolicitante.toLowerCase() === CORREO_COMPRAS.toLowerCase();
+
+  const esCorreoPresupuesto =
+    esParaPresupuesto === true || correoSolicitante.toLowerCase() === CORREO_PRESUPUESTO.toLowerCase();
 
   try {
     console.log(`[resend] Enviando notificación a ${correoSolicitante} para radicado ${radicado}...`);
@@ -89,6 +102,7 @@ export async function notificarCambioEstado(
           <p><strong>Estado Actual:</strong> <span style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${estado}</span></p>
           ${observaciones ? `<p><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
           
+          ${/* BOTÓN EXCLUSIVO PARA COMPRAS */ ''}
           ${
             esCorreoCompras
               ? `
@@ -98,6 +112,22 @@ export async function notificarCambioEstado(
               </a>
               <p style="margin-top: 8px; font-size: 0.8rem; color: #64748b;">
                 Enlace directo: <a href="https://compras-autonoma.vercel.app/compras" style="color: #2563eb;">https://compras-autonoma.vercel.app/compras</a>
+              </p>
+            </div>
+            `
+              : ''
+          }
+
+          ${/* BOTÓN EXCLUSIVO PARA PRESUPUESTO */ ''}
+          ${
+            esCorreoPresupuesto
+              ? `
+            <div style="margin: 25px 0; text-align: center;">
+              <a href="https://compras-autonoma.vercel.app/presupuesto" target="_blank" style="background-color: #059669; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+                📊 Clasificar en Módulo de Presupuesto
+              </a>
+              <p style="margin-top: 8px; font-size: 0.8rem; color: #64748b;">
+                Enlace directo: <a href="https://compras-autonoma.vercel.app/presupuesto" style="color: #059669;">https://compras-autonoma.vercel.app/presupuesto</a>
               </p>
             </div>
             `
@@ -125,8 +155,8 @@ export async function notificarCambioEstado(
 
 /**
  * Función a llamar al CREAR una solicitud.
- * Envía el correo de confirmación al Solicitante (SIN botón)
- * y el correo de aviso a Compras (CON botón).
+ * Envía el correo al Solicitante (SIN botón)
+ * y el correo a Compras (CON botón de compras).
  */
 export async function notificarNuevaSolicitud(params: {
   correoSolicitante: string;
@@ -136,7 +166,7 @@ export async function notificarNuevaSolicitud(params: {
 }): Promise<NotificacionResultado> {
   const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
 
-  // 1. Envío al Solicitante (sin botón de compras)
+  // 1. Envío al Solicitante (sin botón)
   await notificarCambioEstado({
     correoSolicitante,
     nombreSolicitante,
@@ -144,6 +174,7 @@ export async function notificarNuevaSolicitud(params: {
     estado: 'Creada',
     observaciones,
     esParaCompras: false,
+    esParaPresupuesto: false,
   });
 
   // 2. Envío al área de Compras (con botón de compras)
@@ -154,6 +185,43 @@ export async function notificarNuevaSolicitud(params: {
     estado: 'Creada',
     observaciones: `Nueva solicitud registrada por ${nombreSolicitante} (${correoSolicitante}).`,
     esParaCompras: true,
+  });
+
+  return { success: true };
+}
+
+/**
+ * Función a llamar al pasar a 'En Revisión Presupuestal'.
+ * Envía la actualización al Solicitante (SIN botón)
+ * y el aviso al área de Presupuesto (CON botón de presupuesto).
+ */
+export async function notificarRevisionPresupuestal(params: {
+  correoSolicitante: string;
+  nombreSolicitante: string;
+  radicado: string;
+  observaciones?: string | null;
+}): Promise<NotificacionResultado> {
+  const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
+
+  // 1. Envío al Solicitante (sin botón)
+  await notificarCambioEstado({
+    correoSolicitante,
+    nombreSolicitante,
+    radicado,
+    estado: 'En Revisión Presupuestal',
+    observaciones,
+    esParaCompras: false,
+    esParaPresupuesto: false,
+  });
+
+  // 2. Envío al área de Presupuesto (con botón de presupuesto)
+  await notificarCambioEstado({
+    correoSolicitante: CORREO_PRESUPUESTO,
+    nombreSolicitante: 'Equipo de Presupuesto',
+    radicado,
+    estado: 'En Revisión Presupuestal',
+    observaciones: `Solicitud remitida a revisión presupuestal. Solicitante: ${nombreSolicitante} (${correoSolicitante}).`,
+    esParaPresupuesto: true,
   });
 
   return { success: true };
