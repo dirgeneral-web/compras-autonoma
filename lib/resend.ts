@@ -8,11 +8,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Obtiene el remitente desde Vercel o usa el de prueba como respaldo
 const REMITENTE = process.env.RESEND_FROM_EMAIL || 'Sistema de Compras <onboarding@resend.dev>';
+const CORREO_COMPRAS = 'cotizaciones@uniautonoma.edu.co';
 
 const MENSAJES_POR_ESTADO: Record<EstadoSolicitud, { asunto: string; cuerpo: string }> = {
   Creada: {
     asunto: 'Hemos recibido tu solicitud de compra',
-    cuerpo: 'Tu solicitud fue registrada exitosamente y está pendiente de cotización.',
+    cuerpo: 'Tu solicitud fue registrada exitosamente y está pendiente de gestión por el área de compras.',
   },
   'En Cotización': {
     asunto: 'Tu solicitud está en proceso de cotización',
@@ -42,13 +43,13 @@ interface NotificacionEstadoParams {
   radicado: string;
   estado: EstadoSolicitud;
   observaciones?: string | null;
-  esParaCompras?: boolean; // Flag opcional para forzar la visualización en correos a compras
+  esParaCompras?: boolean; // Flag explícito para mostrar o no el botón
 }
 
 type NotificacionResultado = { success: true } | { success: false; error: string };
 
 /**
- * Envía un correo transaccional al destinatario correspondiente.
+ * Envía una notificación por correo electrónico.
  */
 export async function notificarCambioEstado(
   params: NotificacionEstadoParams
@@ -67,12 +68,12 @@ export async function notificarCambioEstado(
     return { success: false, error: `Estado ${estado} no reconocido.` };
   }
 
-  // Verifica si el correo va dirigido al área de Compras
+  // Muestra el botón SOLO si esParaCompras es true o el destinatario es el correo de Compras
   const esCorreoCompras =
-    Boolean(esParaCompras) || correoSolicitante.toLowerCase() === 'cotizaciones@uniautonoma.edu.co';
+    esParaCompras === true || correoSolicitante.toLowerCase() === CORREO_COMPRAS.toLowerCase();
 
   try {
-    console.log(`[resend] Intentando enviar notificación a ${correoSolicitante} para radicado ${radicado}...`);
+    console.log(`[resend] Enviando notificación a ${correoSolicitante} para radicado ${radicado}...`);
 
     const { data, error } = await resend.emails.send({
       from: REMITENTE,
@@ -89,7 +90,7 @@ export async function notificarCambioEstado(
           ${observaciones ? `<p><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
           
           ${
-            esCorreoCompras && (estado === 'Creada' || estado === 'En Cotización')
+            esCorreoCompras
               ? `
             <div style="margin: 25px 0; text-align: center;">
               <a href="https://compras-autonoma.vercel.app/compras" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
@@ -120,4 +121,40 @@ export async function notificarCambioEstado(
     console.error('[resend] Excepción inesperada al procesar el correo:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Error desconocido.' };
   }
+}
+
+/**
+ * Función a llamar al CREAR una solicitud.
+ * Envía el correo de confirmación al Solicitante (SIN botón)
+ * y el correo de aviso a Compras (CON botón).
+ */
+export async function notificarNuevaSolicitud(params: {
+  correoSolicitante: string;
+  nombreSolicitante: string;
+  radicado: string;
+  observaciones?: string | null;
+}): Promise<NotificacionResultado> {
+  const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
+
+  // 1. Envío al Solicitante (sin botón de compras)
+  await notificarCambioEstado({
+    correoSolicitante,
+    nombreSolicitante,
+    radicado,
+    estado: 'Creada',
+    observaciones,
+    esParaCompras: false,
+  });
+
+  // 2. Envío al área de Compras (con botón de compras)
+  await notificarCambioEstado({
+    correoSolicitante: CORREO_COMPRAS,
+    nombreSolicitante: 'Equipo de Compras',
+    radicado,
+    estado: 'Creada',
+    observaciones: `Nueva solicitud registrada por ${nombreSolicitante} (${correoSolicitante}).`,
+    esParaCompras: true,
+  });
+
+  return { success: true };
 }
