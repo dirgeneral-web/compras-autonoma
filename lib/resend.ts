@@ -10,6 +10,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const REMITENTE = process.env.RESEND_FROM_EMAIL || 'Sistema de Compras <onboarding@resend.dev>';
 const CORREO_COMPRAS = 'cotizaciones@uniautonoma.edu.co';
 const CORREO_PRESUPUESTO = 'presupuesto@uniautonoma.edu.co';
+const CORREO_AUTORIZADOR = 'autorizador@uniautonoma.edu.co';
 
 const MENSAJES_POR_ESTADO: Record<EstadoSolicitud, { asunto: string; cuerpo: string }> = {
   Creada: {
@@ -46,6 +47,7 @@ interface NotificacionEstadoParams {
   observaciones?: string | null;
   esParaCompras?: boolean;     // Flag para mostrar botón de Compras
   esParaPresupuesto?: boolean; // Flag para mostrar botón de Presupuesto
+  esParaAutorizador?: boolean; // Flag para mostrar botón de Autorizador
 }
 
 type NotificacionResultado = { success: true } | { success: false; error: string };
@@ -64,6 +66,7 @@ export async function notificarCambioEstado(
     observaciones,
     esParaCompras,
     esParaPresupuesto,
+    esParaAutorizador,
   } = params;
 
   if (!process.env.RESEND_API_KEY) {
@@ -78,12 +81,15 @@ export async function notificarCambioEstado(
     return { success: false, error: `Estado ${estado} no reconocido.` };
   }
 
-  // Evalúa si el destinatario es Compras o Presupuesto
+  // Evalúa si el destinatario es Compras, Presupuesto o Autorizador
   const esCorreoCompras =
     esParaCompras === true || correoSolicitante.toLowerCase() === CORREO_COMPRAS.toLowerCase();
 
   const esCorreoPresupuesto =
     esParaPresupuesto === true || correoSolicitante.toLowerCase() === CORREO_PRESUPUESTO.toLowerCase();
+
+  const esCorreoAutorizador =
+    esParaAutorizador === true || correoSolicitante.toLowerCase() === CORREO_AUTORIZADOR.toLowerCase();
 
   try {
     console.log(`[resend] Enviando notificación a ${correoSolicitante} para radicado ${radicado}...`);
@@ -134,6 +140,22 @@ export async function notificarCambioEstado(
               : ''
           }
 
+          ${/* BOTÓN EXCLUSIVO PARA AUTORIZADOR */ ''}
+          ${
+            esCorreoAutorizador
+              ? `
+            <div style="margin: 25px 0; text-align: center;">
+              <a href="https://compras-autonoma.vercel.app/autorizador" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+                ✍️ Revisar y Aprobar en Módulo Autorizador
+              </a>
+              <p style="margin-top: 8px; font-size: 0.8rem; color: #64748b;">
+                Enlace directo: <a href="https://compras-autonoma.vercel.app/autorizador" style="color: #4f46e5;">https://compras-autonoma.vercel.app/autorizador</a>
+              </p>
+            </div>
+            `
+              : ''
+          }
+
           <br/>
           <p style="font-size: 0.85rem; color: #64748b;">Puedes consultar el estado de tu solicitud en cualquier momento ingresando tu radicado en el buscador público del sistema.</p>
         </div>
@@ -175,6 +197,7 @@ export async function notificarNuevaSolicitud(params: {
     observaciones,
     esParaCompras: false,
     esParaPresupuesto: false,
+    esParaAutorizador: false,
   });
 
   // 2. Envío al área de Compras (con botón de compras)
@@ -212,6 +235,7 @@ export async function notificarRevisionPresupuestal(params: {
     observaciones,
     esParaCompras: false,
     esParaPresupuesto: false,
+    esParaAutorizador: false,
   });
 
   // 2. Envío al área de Presupuesto (con botón de presupuesto)
@@ -222,6 +246,44 @@ export async function notificarRevisionPresupuestal(params: {
     estado: 'En Revisión Presupuestal',
     observaciones: `Solicitud remitida a revisión presupuestal. Solicitante: ${nombreSolicitante} (${correoSolicitante}).`,
     esParaPresupuesto: true,
+  });
+
+  return { success: true };
+}
+
+/**
+ * Función a llamar al pasar a 'Esperando Aprobación Final'.
+ * Envía la actualización al Solicitante (SIN botón)
+ * y el aviso al Autorizador (CON botón de autorizador).
+ */
+export async function notificarAprobacionFinal(params: {
+  correoSolicitante: string;
+  nombreSolicitante: string;
+  radicado: string;
+  observaciones?: string | null;
+}): Promise<NotificacionResultado> {
+  const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
+
+  // 1. Envío al Solicitante (sin botón)
+  await notificarCambioEstado({
+    correoSolicitante,
+    nombreSolicitante,
+    radicado,
+    estado: 'Esperando Aprobación Final',
+    observaciones,
+    esParaCompras: false,
+    esParaPresupuesto: false,
+    esParaAutorizador: false,
+  });
+
+  // 2. Envío al Autorizador (con botón de autorizador)
+  await notificarCambioEstado({
+    correoSolicitante: CORREO_AUTORIZADOR,
+    nombreSolicitante: 'Autorizador General',
+    radicado,
+    estado: 'Esperando Aprobación Final',
+    observaciones: `Solicitud pendiente de tu aprobación final. Solicitante: ${nombreSolicitante} (${correoSolicitante}).`,
+    esParaAutorizador: true,
   });
 
   return { success: true };
