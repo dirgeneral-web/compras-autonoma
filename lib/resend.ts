@@ -13,7 +13,7 @@ const CORREO_COMPRAS = 'cotizaciones@uniautonoma.edu.co';
 const MENSAJES_POR_ESTADO: Record<EstadoSolicitud, { asunto: string; cuerpo: string }> = {
   Creada: {
     asunto: 'Hemos recibido tu solicitud de compra',
-    cuerpo: 'Tu solicitud fue registrada exitosamente y está pendiente de gestión por el área de compras.',
+    cuerpo: 'Solicitud registrada exitosamente y está pendiente de gestión por el área de compras.',
   },
   'En Cotización': {
     asunto: 'Tu solicitud está en proceso de cotización',
