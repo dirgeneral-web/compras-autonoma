@@ -15,6 +15,8 @@ import {
 import type { Database, EstadoSolicitud, Json } from '@/lib/supabase/database.types';
 import { notificarCambioEstado } from '@/lib/resend';
 
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 /* -------------------------------------------------------------------- */
 /* Tipo de resultado uniforme para todas las Server Actions             */
 /* -------------------------------------------------------------------- */
@@ -195,7 +197,7 @@ export async function guardarCotizaciones(
     return { success: false, error: 'Debe iniciar sesión para registrar cotizaciones.' };
   }
 
-  if (!user || user.email?.toLowerCase() !== 'cotizaciones@uniautonoma.edu.co') {
+  if (user.email?.toLowerCase() !== 'cotizaciones@uniautonoma.edu.co') {
     return {
       success: false,
       error: 'No tienes permisos para guardar registros de compras o cotizaciones.',
@@ -315,7 +317,6 @@ export async function guardarPresupuesto(
     return { success: false, error: 'Debe iniciar sesión para clasificar el presupuesto.' };
   }
 
-  // 🔒 VALIDACIÓN DE ROL: Evita que roles como 'compras' ejecuten esta acción
   const rolUsuario = user.user_metadata?.rol;
   if (rolUsuario !== 'presupuesto') {
     return { 
@@ -422,14 +423,13 @@ export async function aprobarORechazarSolicitud(
     return { success: false, error: 'Debe iniciar sesión para realizar esta acción.' };
   }
 
-  // Determinar el nuevo estado en la tabla 'solicitudes'
   let nuevoEstado: EstadoSolicitud = 'Aprobada';
   if (parsed.data.accion === 'Aprobada') {
     nuevoEstado = 'Aprobada';
   } else if (parsed.data.accion === 'Rechazada') {
     nuevoEstado = 'Rechazada';
   } else if (parsed.data.accion === 'Devuelta') {
-    nuevoEstado = 'Creada'; // Vuelve al inicio del flujo para Compras
+    nuevoEstado = 'Creada';
   }
 
   // 1. Actualizar la tabla 'solicitudes'
@@ -481,6 +481,7 @@ export async function aprobarORechazarSolicitud(
   // 3. Notificaciones por correo electrónico
   if (solicitud.radicado) {
     try {
+      // a) Notificar al solicitante
       await notificarCambioEstado({
         correoSolicitante: solicitud.correo_solicitante,
         nombreSolicitante: solicitud.nombre_solicitante,
@@ -489,8 +490,8 @@ export async function aprobarORechazarSolicitud(
         observaciones: parsed.data.observaciones ?? null,
       });
 
-      // Si la solicitud fue aprobada, avisar también al correo de compras/cotizaciones para notificar al proveedor
       if (parsed.data.accion === 'Aprobada') {
+        // b) Notificar al equipo interno de compras
         await notificarCambioEstado({
           correoSolicitante: 'cotizaciones@uniautonoma.edu.co',
           nombreSolicitante: 'Equipo de Compras / Cotizaciones',
@@ -498,9 +499,68 @@ export async function aprobarORechazarSolicitud(
           estado: 'Aprobada',
           observaciones: parsed.data.observaciones ?? null,
         });
+
+        // c) BUSCAR EL PROVEEDOR GANADOR Y NOTIFICARLE DIRECTAMENTE
+        const { data: cotizacion } = await (supabase as any)
+          .from('cotizaciones_compras')
+          .select('proveedor_definitivo, valor_definitivo')
+          .eq('solicitud_id', parsed.data.id)
+          .maybeSingle();
+
+        if (cotizacion && cotizacion.proveedor_definitivo) {
+          const { data: proveedorData } = await (supabase as any)
+            .from('proveedores')
+            .select('correo_electronico, nombre_proveedor, contacto')
+            .eq('nombre_proveedor', cotizacion.proveedor_definitivo)
+            .maybeSingle();
+
+          if (proveedorData && proveedorData.correo_electronico) {
+            await resend.emails.send({
+              from: 'Compras Uniautónoma <onboarding@resend.dev>',
+              to: [proveedorData.correo_electronico],
+              subject: `¡Cotización Aprobada! — Radicado ${solicitud.radicado}`,
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; color: #1e293b; line-height: 1.5; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                  <div style="background-color: #16a34a; padding: 20px; text-align: center; color: white;">
+                    <h2 style="margin: 0; font-size: 20px;">Notificación de Selección de Oferta</h2>
+                  </div>
+                  <div style="padding: 24px;">
+                    <p>Estimado(a) <strong>${proveedorData.contacto || proveedorData.nombre_proveedor}</strong>,</p>
+                    <p>
+                      Nos complace informarle que la propuesta de <strong>${proveedorData.nombre_proveedor}</strong> para la solicitud con radicado 
+                      <strong>${solicitud.radicado}</strong> ha sido <span style="color: #16a34a; font-weight: bold;">SELECCIONADA Y APROBADA</span>.
+                    </p>
+                    ${
+                      cotizacion.valor_definitivo
+                        ? `<p style="background-color: #f0fdf4; padding: 12px; border-left: 4px solid #22c55e; border-radius: 4px;">
+                            <strong>Valor Total Aprobado:</strong> $${Number(cotizacion.valor_definitivo).toLocaleString('es-CO')}
+                           </p>`
+                        : ''
+                    }
+                    ${
+                      parsed.data.observaciones
+                        ? `<p><strong>Observaciones de Aprobación:</strong> ${parsed.data.observaciones}</p>`
+                        : ''
+                    }
+                    <p style="margin-top: 20px;">
+                      El área de Compras de la institución se pondrá en contacto con usted en breve para formalizar la orden de compra y detallar las fechas de entrega/facturación.
+                    </p>
+                  </div>
+                  <div style="background-color: #f8fafc; padding: 12px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
+                    Corporación Universitaria Autónoma del Cauca
+                  </div>
+                </div>
+              `,
+            });
+          } else {
+            console.warn(
+              `[aprobarORechazarSolicitud] No se encontró un correo electrónico configurado para el proveedor: ${cotizacion.proveedor_definitivo}`
+            );
+          }
+        }
       }
 
-      // Si fue devuelta, avisar al equipo de Compras para que revisen el requerimiento nuevamente
+      // Si fue devuelta, avisar al equipo de Compras
       if (parsed.data.accion === 'Devuelta' && process.env.CORREO_COMPRAS) {
         await notificarCambioEstado({
           correoSolicitante: process.env.CORREO_COMPRAS,
@@ -517,8 +577,6 @@ export async function aprobarORechazarSolicitud(
 
   return { success: true, data: { id: solicitud.id, estado: solicitud.estado } };
 }
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function rechazarSolicitudPresupuesto(solicitudId: string, motivo: string) {
   try {
