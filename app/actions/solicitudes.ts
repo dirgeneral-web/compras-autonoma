@@ -423,13 +423,14 @@ export async function aprobarORechazarSolicitud(
     return { success: false, error: 'Debe iniciar sesión para realizar esta acción.' };
   }
 
+  // Determinar el nuevo estado en la tabla 'solicitudes'
   let nuevoEstado: EstadoSolicitud = 'Aprobada';
   if (parsed.data.accion === 'Aprobada') {
     nuevoEstado = 'Aprobada';
   } else if (parsed.data.accion === 'Rechazada') {
     nuevoEstado = 'Rechazada';
   } else if (parsed.data.accion === 'Devuelta') {
-    nuevoEstado = 'Creada';
+    nuevoEstado = 'Creada'; // Vuelve al inicio del flujo para Compras
   }
 
   // 1. Actualizar la tabla 'solicitudes'
@@ -490,8 +491,9 @@ export async function aprobarORechazarSolicitud(
         observaciones: parsed.data.observaciones ?? null,
       });
 
+      // b) Acciones cuando la solicitud es APROBADA
       if (parsed.data.accion === 'Aprobada') {
-        // b) Notificar al equipo interno de compras
+        // Notificar al equipo interno de compras
         await notificarCambioEstado({
           correoSolicitante: 'cotizaciones@uniautonoma.edu.co',
           nombreSolicitante: 'Equipo de Compras / Cotizaciones',
@@ -500,22 +502,41 @@ export async function aprobarORechazarSolicitud(
           observaciones: parsed.data.observaciones ?? null,
         });
 
-        // c) BUSCAR EL PROVEEDOR GANADOR Y NOTIFICARLE DIRECTAMENTE
-        const { data: cotizacion } = await (supabase as any)
+        // Obtener el proveedor ganador desde 'cotizaciones_compras'
+        const { data: cotizacion, error: errorCotizacion } = await (supabase as any)
           .from('cotizaciones_compras')
           .select('proveedor_definitivo, valor_definitivo')
           .eq('solicitud_id', parsed.data.id)
           .maybeSingle();
 
-        if (cotizacion && cotizacion.proveedor_definitivo) {
-          const { data: proveedorData } = await (supabase as any)
+        if (errorCotizacion) {
+          console.error('[aprobarORechazarSolicitud] Error al obtener cotización:', errorCotizacion);
+        }
+
+        if (cotizacion?.proveedor_definitivo) {
+          console.log('[aprobarORechazarSolicitud] Buscando proveedor:', cotizacion.proveedor_definitivo);
+
+          // 1º Búsqueda por ID en la tabla proveedores
+          let { data: proveedorData } = await (supabase as any)
             .from('proveedores')
             .select('correo_electronico, nombre_proveedor, contacto')
-            .eq('nombre_proveedor', cotizacion.proveedor_definitivo)
+            .eq('id', cotizacion.proveedor_definitivo)
             .maybeSingle();
 
-          if (proveedorData && proveedorData.correo_electronico) {
-            await resend.emails.send({
+          // 2º Si no coincide por ID, buscar por el Nombre del proveedor
+          if (!proveedorData) {
+            const { data: proveedorPorNombre } = await (supabase as any)
+              .from('proveedores')
+              .select('correo_electronico, nombre_proveedor, contacto')
+              .ilike('nombre_proveedor', cotizacion.proveedor_definitivo.trim())
+              .maybeSingle();
+            proveedorData = proveedorPorNombre;
+          }
+
+          if (proveedorData?.correo_electronico) {
+            console.log('[aprobarORechazarSolicitud] Enviando correo a:', proveedorData.correo_electronico);
+
+            const resultEmail = await resend.emails.send({
               from: 'Compras Uniautónoma <onboarding@resend.dev>',
               to: [proveedorData.correo_electronico],
               subject: `¡Cotización Aprobada! — Radicado ${solicitud.radicado}`,
@@ -552,15 +573,23 @@ export async function aprobarORechazarSolicitud(
                 </div>
               `,
             });
+
+            if (resultEmail.error) {
+              console.error('[aprobarORechazarSolicitud] Error de Resend:', resultEmail.error);
+            } else {
+              console.log('[aprobarORechazarSolicitud] Correo enviado al proveedor con éxito ID:', resultEmail.data?.id);
+            }
           } else {
             console.warn(
-              `[aprobarORechazarSolicitud] No se encontró un correo electrónico configurado para el proveedor: ${cotizacion.proveedor_definitivo}`
+              `[aprobarORechazarSolicitud] No se encontró correo en la tabla 'proveedores' para: "${cotizacion.proveedor_definitivo}"`
             );
           }
+        } else {
+          console.warn('[aprobarORechazarSolicitud] No hay proveedor_definitivo en cotizaciones_compras');
         }
       }
 
-      // Si fue devuelta, avisar al equipo de Compras
+      // c) Si fue devuelta, avisar al equipo de Compras
       if (parsed.data.accion === 'Devuelta' && process.env.CORREO_COMPRAS) {
         await notificarCambioEstado({
           correoSolicitante: process.env.CORREO_COMPRAS,
@@ -571,7 +600,7 @@ export async function aprobarORechazarSolicitud(
         });
       }
     } catch (emailError) {
-      console.error('[aprobarORechazarSolicitud] Error enviando correo:', emailError);
+      console.error('[aprobarORechazarSolicitud] Error inesperado en el envío:', emailError);
     }
   }
 
