@@ -31,7 +31,7 @@ const MENSAJES_POR_ESTADO: Record<EstadoSolicitud, { asunto: string; cuerpo: str
   },
   Aprobada: {
     asunto: '¡Tu solicitud de compra fue aprobada!',
-    cuerpo: 'Tu solicitud fue aprobada y continuará con el proceso de compra.',
+    cuerpo: 'Tu solicitud fue aprobada y se ha emitido la orden de compra correspondiente.',
   },
   Rechazada: {
     asunto: 'Tu solicitud de compra fue rechazada',
@@ -45,15 +45,33 @@ interface NotificacionEstadoParams {
   radicado: string;
   estado: EstadoSolicitud;
   observaciones?: string | null;
-  esParaCompras?: boolean;     // Flag para mostrar botón de Compras
-  esParaPresupuesto?: boolean; // Flag para mostrar botón de Presupuesto
-  esParaAutorizador?: boolean; // Flag para mostrar botón de Autorizador
+  esParaCompras?: boolean;
+  esParaPresupuesto?: boolean;
+  esParaAutorizador?: boolean;
 }
+
+export type ArticuloDetalleEmail = {
+  nombre_articulo: string;
+  cantidad: number;
+  unidad_medida?: string | null;
+  especificaciones_tecnicas?: string | null;
+  descripcion?: string | null;
+};
+
+export type NotificacionProveedorParams = {
+  correoProveedor: string;
+  nombreProveedor: string;
+  radicado: string;
+  nombreSolicitante: string;
+  articulos: ArticuloDetalleEmail[];
+  valorTotal?: number | null;
+  observaciones?: string | null;
+};
 
 type NotificacionResultado = { success: true } | { success: false; error: string };
 
 /**
- * Envía una notificación por correo electrónico.
+ * Envía una notificación por correo electrónico del cambio de estado.
  */
 export async function notificarCambioEstado(
   params: NotificacionEstadoParams
@@ -81,7 +99,6 @@ export async function notificarCambioEstado(
     return { success: false, error: `Estado ${estado} no reconocido.` };
   }
 
-  // Evalúa si el destinatario es Compras, Presupuesto o Autorizador
   const esCorreoCompras =
     esParaCompras === true || correoSolicitante.toLowerCase() === CORREO_COMPRAS.toLowerCase();
 
@@ -108,7 +125,6 @@ export async function notificarCambioEstado(
           <p><strong>Estado Actual:</strong> <span style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${estado}</span></p>
           ${observaciones ? `<p><strong>Observaciones:</strong> ${observaciones}</p>` : ''}
           
-          ${/* BOTÓN EXCLUSIVO PARA COMPRAS */ ''}
           ${
             esCorreoCompras
               ? `
@@ -124,7 +140,6 @@ export async function notificarCambioEstado(
               : ''
           }
 
-          ${/* BOTÓN EXCLUSIVO PARA PRESUPUESTO */ ''}
           ${
             esCorreoPresupuesto
               ? `
@@ -140,7 +155,6 @@ export async function notificarCambioEstado(
               : ''
           }
 
-          ${/* BOTÓN EXCLUSIVO PARA AUTORIZADOR */ ''}
           ${
             esCorreoAutorizador
               ? `
@@ -176,10 +190,85 @@ export async function notificarCambioEstado(
 }
 
 /**
- * Función a llamar al CREAR una solicitud.
- * Envía el correo al Solicitante (SIN botón)
- * y el correo a Compras (CON botón de compras).
+ * Notificación formal de Orden de Compra enviada directamente al PROVEEDOR GANADOR.
  */
+export async function notificarOrdenCompraProveedor(
+  params: NotificacionProveedorParams
+): Promise<NotificacionResultado> {
+  const { correoProveedor, nombreProveedor, radicado, nombreSolicitante, articulos, valorTotal, observaciones } = params;
+
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('[resend] RESEND_API_KEY no está configurada; se omite el envío de correo.');
+    return { success: false, error: 'RESEND_API_KEY no configurada.' };
+  }
+
+  try {
+    console.log(`[resend] Enviando Orden de Compra a proveedor ${correoProveedor} para radicado ${radicado}...`);
+
+    const filasArticulosHTML = articulos
+      .map(
+        (art) => `
+        <tr>
+          <td style="padding: 8px; border: 1px solid #cbd5e1; font-weight: bold;">${art.nombre_articulo}</td>
+          <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: center;">${art.cantidad}</td>
+          <td style="padding: 8px; border: 1px solid #cbd5e1;">${art.unidad_medida || '-'}</td>
+          <td style="padding: 8px; border: 1px solid #cbd5e1; font-size: 0.85rem;">${art.especificaciones_tecnicas || art.descripcion || '-'}</td>
+        </tr>
+      `
+      )
+      .join('');
+
+    const { data, error } = await resend.emails.send({
+      from: REMITENTE,
+      to: correoProveedor,
+      subject: `Orden de Compra Confirmada — Radicado ${radicado}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #0f172a; max-width: 650px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1e293b; margin-top: 0; border-b: 2px solid #2563eb; padding-bottom: 8px;">Confirmación de Orden de Compra</h2>
+          <p>Estimados(as) <strong>${nombreProveedor}</strong>,</p>
+          <p>Nos complace informarles que la cotización presentada para la solicitud con radicado <strong>${radicado}</strong> ha sido <strong>APROBADA</strong> por la institución.</p>
+          
+          <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 6px; border: 1px solid #e2e8f0; margin: 16px 0;">
+            <p style="margin: 4px 0;"><strong>Número de Radicado:</strong> ${radicado}</p>
+            <p style="margin: 4px 0;"><strong>Solicitante Interno:</strong> ${nombreSolicitante}</p>
+            ${valorTotal ? `<p style="margin: 4px 0;"><strong>Valor Total Aprobado:</strong> $ ${valorTotal.toLocaleString('es-CO')}</p>` : ''}
+            ${observaciones ? `<p style="margin: 4px 0;"><strong>Observaciones adicionales:</strong> ${observaciones}</p>` : ''}
+          </div>
+
+          <h3 style="color: #1e293b; margin-top: 20px; font-size: 1rem;">Detalle de Artículos / Servicios Solicitados:</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem;">
+            <thead>
+              <tr style="background-color: #f1f5f9; text-align: left;">
+                <th style="padding: 8px; border: 1px solid #cbd5e1;">Artículo</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: center;">Cantidad</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1;">Unidad</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1;">Especificaciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filasArticulosHTML}
+            </tbody>
+          </table>
+
+          <br/>
+          <p style="font-size: 0.85rem; color: #64748b;">Por favor ponerse en contacto con el área correspondiente para coordinar la entrega y facturación de los ítems detallados.</p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('[resend] Error al enviar orden de compra a proveedor:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[resend] Orden de compra enviada al proveedor ${correoProveedor} (ID: ${data?.id})`);
+    return { success: true };
+  } catch (err) {
+    console.error('[resend] Excepción inesperada enviando correo a proveedor:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Error desconocido.' };
+  }
+}
+
 export async function notificarNuevaSolicitud(params: {
   correoSolicitante: string;
   nombreSolicitante: string;
@@ -188,7 +277,6 @@ export async function notificarNuevaSolicitud(params: {
 }): Promise<NotificacionResultado> {
   const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
 
-  // 1. Envío al Solicitante (sin botón)
   await notificarCambioEstado({
     correoSolicitante,
     nombreSolicitante,
@@ -200,7 +288,6 @@ export async function notificarNuevaSolicitud(params: {
     esParaAutorizador: false,
   });
 
-  // 2. Envío al área de Compras (con botón de compras)
   await notificarCambioEstado({
     correoSolicitante: CORREO_COMPRAS,
     nombreSolicitante: 'Equipo de Compras',
@@ -213,11 +300,6 @@ export async function notificarNuevaSolicitud(params: {
   return { success: true };
 }
 
-/**
- * Función a llamar al pasar a 'En Revisión Presupuestal'.
- * Envía la actualización al Solicitante (SIN botón)
- * y el aviso al área de Presupuesto (CON botón de presupuesto).
- */
 export async function notificarRevisionPresupuestal(params: {
   correoSolicitante: string;
   nombreSolicitante: string;
@@ -226,7 +308,6 @@ export async function notificarRevisionPresupuestal(params: {
 }): Promise<NotificacionResultado> {
   const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
 
-  // 1. Envío al Solicitante (sin botón)
   await notificarCambioEstado({
     correoSolicitante,
     nombreSolicitante,
@@ -238,7 +319,6 @@ export async function notificarRevisionPresupuestal(params: {
     esParaAutorizador: false,
   });
 
-  // 2. Envío al área de Presupuesto (con botón de presupuesto)
   await notificarCambioEstado({
     correoSolicitante: CORREO_PRESUPUESTO,
     nombreSolicitante: 'Equipo de Presupuesto',
@@ -251,11 +331,6 @@ export async function notificarRevisionPresupuestal(params: {
   return { success: true };
 }
 
-/**
- * Función a llamar al pasar a 'Esperando Aprobación Final'.
- * Envía la actualización al Solicitante (SIN botón)
- * y el aviso al Autorizador (CON botón de autorizador).
- */
 export async function notificarAprobacionFinal(params: {
   correoSolicitante: string;
   nombreSolicitante: string;
@@ -264,7 +339,6 @@ export async function notificarAprobacionFinal(params: {
 }): Promise<NotificacionResultado> {
   const { correoSolicitante, nombreSolicitante, radicado, observaciones } = params;
 
-  // 1. Envío al Solicitante (sin botón)
   await notificarCambioEstado({
     correoSolicitante,
     nombreSolicitante,
@@ -276,7 +350,6 @@ export async function notificarAprobacionFinal(params: {
     esParaAutorizador: false,
   });
 
-  // 2. Envío al Autorizador (con botón de autorizador)
   await notificarCambioEstado({
     correoSolicitante: CORREO_AUTORIZADOR,
     nombreSolicitante: 'Autorizador General',
