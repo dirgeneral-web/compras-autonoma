@@ -36,6 +36,11 @@ type SolicitudDetalle = {
   detalles_articulo?: DetalleArticulo[];
 };
 
+type ProveedorOption = {
+  id: string;
+  nombre_proveedor: string;
+};
+
 const ESTADOS_EDITABLES: EstadoSolicitud[] = ['Creada', 'En Cotización'];
 
 function cotizacionVacia(): CotizacionIndividualInput {
@@ -49,6 +54,8 @@ export default function ComprasPage() {
 
   const [pendientes, setPendientes] = useState<SolicitudDetalle[]>([]);
   const [cargandoPendientes, setCargandoPendientes] = useState(true);
+  const [listaProveedores, setListaProveedores] = useState<ProveedorOption[]>([]);
+  
   const [radicadoBuscado, setRadicadoBuscado] = useState('');
   const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -98,12 +105,29 @@ export default function ComprasPage() {
     verificarPermisos();
   }, [router]);
 
-  // Cargar lista de pendientes únicamente al estar autorizado
+  // Cargar lista de pendientes y de proveedores únicamente al estar autorizado
   useEffect(() => {
     if (autorizado) {
       cargarPendientes();
+      cargarProveedores();
     }
   }, [autorizado]);
+
+  async function cargarProveedores() {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('proveedores')
+      .select('id, nombre_proveedor')
+      .order('nombre_proveedor', { ascending: true });
+
+    if (error) {
+      console.error('Error al cargar la lista de proveedores:', error.message || error);
+      return;
+    }
+
+    // Se agrega 'as unknown' antes de 'as ProveedorOption[]'
+    setListaProveedores((data as unknown as ProveedorOption[]) || []);
+  }
 
   async function cargarPendientes() {
     setCargandoPendientes(true);
@@ -334,6 +358,13 @@ export default function ComprasPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
+      {/* Datalist global para cargar sugerencias de proveedores */}
+      <datalist id="lista-proveedores">
+        {listaProveedores.map((p) => (
+          <option key={p.id} value={p.nombre_proveedor} />
+        ))}
+      </datalist>
+
       <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Compras — Cotizaciones</h1>
@@ -478,14 +509,29 @@ export default function ComprasPage() {
           {[0, 1, 2].map((indice) => (
             <Card key={indice}>
               <CardHeader>
-                <CardTitle className="text-lg">Cotización {indice + 1}</CardTitle>
+                <CardTitle className="text-lg flex items-center justify-between">
+                  <span>Cotización {indice + 1}</span>
+                  {indice < 2 ? (
+                    <Badge variant="outline" className="border-amber-500 text-amber-700 bg-amber-50 text-xs">
+                      Obligatoria *
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-slate-300 text-slate-500 text-xs">
+                      Opcional
+                    </Badge>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor={`proveedor_${indice}`}>Proveedor</Label>
+                  <Label htmlFor={`proveedor_${indice}`}>
+                    Proveedor {indice < 2 && <span className="text-red-500">*</span>}
+                  </Label>
                   <Input
                     id={`proveedor_${indice}`}
+                    list="lista-proveedores"
                     disabled={!solicitudEditable}
+                    placeholder={indice < 2 ? "Selecciona o busca un proveedor..." : "Opcional: Selecciona o busca..."}
                     value={cotizaciones[indice].proveedor ?? ''}
                     onChange={(evento: ChangeEvent<HTMLInputElement>) =>
                       actualizarCotizacion(indice, 'proveedor', evento.target.value)
@@ -493,7 +539,9 @@ export default function ComprasPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor={`valor_${indice}`}>Valor cotizado</Label>
+                  <Label htmlFor={`valor_${indice}`}>
+                    Valor cotizado {indice < 2 && <span className="text-red-500">*</span>}
+                  </Label>
                   <Input
                     id={`valor_${indice}`}
                     type="number"
