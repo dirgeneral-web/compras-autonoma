@@ -430,7 +430,7 @@ export async function aprobarORechazarSolicitud(
   } else if (parsed.data.accion === 'Rechazada') {
     nuevoEstado = 'Rechazada';
   } else if (parsed.data.accion === 'Devuelta') {
-    nuevoEstado = 'Creada'; // Vuelve al inicio del flujo para Compras
+    nuevoEstado = 'Creada';
   }
 
   // 1. Actualizar la tabla 'solicitudes'
@@ -502,7 +502,7 @@ export async function aprobarORechazarSolicitud(
           observaciones: parsed.data.observaciones ?? null,
         });
 
-        // Obtener el proveedor ganador desde 'cotizaciones_compras'
+        // 1. Obtener proveedor_definitivo (Nombre) desde 'cotizaciones_compras'
         const { data: cotizacion, error: errorCotizacion } = await (supabase as any)
           .from('cotizaciones_compras')
           .select('proveedor_definitivo, valor_definitivo')
@@ -514,25 +514,21 @@ export async function aprobarORechazarSolicitud(
         }
 
         if (cotizacion?.proveedor_definitivo) {
-          console.log('[aprobarORechazarSolicitud] Buscando proveedor:', cotizacion.proveedor_definitivo);
+          const nombreProveedor = cotizacion.proveedor_definitivo.trim();
+          console.log('[aprobarORechazarSolicitud] Buscando proveedor por nombre:', nombreProveedor);
 
-          // 1º Búsqueda por ID en la tabla proveedores
-          let { data: proveedorData } = await (supabase as any)
+          // 2. Buscar en 'proveedores' usando 'nombre_proveedor'
+          const { data: proveedorData, error: errorProveedor } = await (supabase as any)
             .from('proveedores')
             .select('correo_electronico, nombre_proveedor, contacto')
-            .eq('id', cotizacion.proveedor_definitivo)
+            .ilike('nombre_proveedor', nombreProveedor)
             .maybeSingle();
 
-          // 2º Si no coincide por ID, buscar por el Nombre del proveedor
-          if (!proveedorData) {
-            const { data: proveedorPorNombre } = await (supabase as any)
-              .from('proveedores')
-              .select('correo_electronico, nombre_proveedor, contacto')
-              .ilike('nombre_proveedor', cotizacion.proveedor_definitivo.trim())
-              .maybeSingle();
-            proveedorData = proveedorPorNombre;
+          if (errorProveedor) {
+            console.error('[aprobarORechazarSolicitud] Error al consultar la tabla proveedores:', errorProveedor);
           }
 
+          // 3. Si se encuentra el correo del proveedor, enviar con Resend
           if (proveedorData?.correo_electronico) {
             console.log('[aprobarORechazarSolicitud] Enviando correo a:', proveedorData.correo_electronico);
 
@@ -575,17 +571,17 @@ export async function aprobarORechazarSolicitud(
             });
 
             if (resultEmail.error) {
-              console.error('[aprobarORechazarSolicitud] Error de Resend:', resultEmail.error);
+              console.error('[aprobarORechazarSolicitud] Error de envío devuelto por Resend:', resultEmail.error);
             } else {
-              console.log('[aprobarORechazarSolicitud] Correo enviado al proveedor con éxito ID:', resultEmail.data?.id);
+              console.log('[aprobarORechazarSolicitud] Correo enviado exitosamente al proveedor, ID Resend:', resultEmail.data?.id);
             }
           } else {
             console.warn(
-              `[aprobarORechazarSolicitud] No se encontró correo en la tabla 'proveedores' para: "${cotizacion.proveedor_definitivo}"`
+              `[aprobarORechazarSolicitud] No se encontró ningún registro en 'proveedores' cuyo 'nombre_proveedor' sea igual a: "${nombreProveedor}"`
             );
           }
         } else {
-          console.warn('[aprobarORechazarSolicitud] No hay proveedor_definitivo en cotizaciones_compras');
+          console.warn('[aprobarORechazarSolicitud] El campo proveedor_definitivo está vacío o es nulo en cotizaciones_compras.');
         }
       }
 
@@ -600,12 +596,16 @@ export async function aprobarORechazarSolicitud(
         });
       }
     } catch (emailError) {
-      console.error('[aprobarORechazarSolicitud] Error inesperado en el envío:', emailError);
+      console.error('[aprobarORechazarSolicitud] Error inesperado en el bloque de correos:', emailError);
     }
   }
 
   return { success: true, data: { id: solicitud.id, estado: solicitud.estado } };
 }
+
+/* -------------------------------------------------------------------- */
+/* 6. Rechazar solicitud presupuesto                                    */
+/* -------------------------------------------------------------------- */
 
 export async function rechazarSolicitudPresupuesto(solicitudId: string, motivo: string) {
   try {
